@@ -1,0 +1,501 @@
+(function () {
+  "use strict";
+
+  // ---------- constants ----------
+  var TYPE_COLOR = { "信息流": "var(--t-info)", "灵感": "var(--t-idea)", "决策": "var(--t-decision)" };
+  var STATUS_COLOR = {
+    "待处理": "var(--c-red)", "跟进中": "var(--c-yellow)", "已归档": "var(--c-green)", "已放弃": "var(--c-gray)",
+    "进行中": "var(--c-yellow)", "待发生": "var(--c-blue)", "已完成": "var(--c-green)"
+  };
+  var TAG_COLOR = {
+    "宏观": "var(--c-blue)", "行业": "var(--c-green)", "公司": "var(--c-orange)", "策略": "var(--c-purple)",
+    "灵感": "var(--c-pink)", "信息管理": "var(--c-yellow)", "待归类": "var(--c-gray)", "AI": "var(--c-brown)", "认知管理": "var(--c-red)"
+  };
+  var TYPES = ["信息流", "灵感", "决策"];
+  var STATUSES = ["待处理", "跟进中", "已归档", "已放弃"];
+  var TZ = "Asia/Singapore";
+  var DAY = 86400000;
+
+  var state = { data: null, byId: {}, f: { type: new Set(), status: new Set(), tag: new Set() }, q: "", view: "feed", graphReady: false };
+
+  // ---------- helpers ----------
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function tagColor(t) { return TAG_COLOR[t] || "var(--c-gray)"; }
+  function notionUrl(id) { return "https://www.notion.so/" + id; }
+  function trunc(s, n) { s = s || ""; return s.length > n ? s.slice(0, n) + "…" : s; }
+
+  var fmtDay = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
+  var fmtTime = new Intl.DateTimeFormat("zh-CN", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
+  var fmtWeek = new Intl.DateTimeFormat("zh-CN", { timeZone: TZ, weekday: "short" });
+  function sgDay(iso) { return fmtDay.format(new Date(iso)); }          // YYYY-MM-DD in SGT
+  function todayKey() { return fmtDay.format(new Date()); }
+  function dayNum(key) { var p = key.split("-"); return Date.UTC(+p[0], +p[1] - 1, +p[2]) / DAY; }
+  function daysUntil(key) { return dayNum(key) - dayNum(todayKey()); }
+  function addDays(key, n) { return new Date((dayNum(key) + n) * DAY).toISOString().slice(0, 10); }
+  function md(key) { var p = key.split("-"); return +p[1] + "月" + +p[2] + "日"; }
+  function mdShort(key) { var p = key.split("-"); return p[1] + "/" + p[2]; }
+  function rel(key) {
+    var d = daysUntil(key);
+    if (d === 0) return "今天";
+    if (d === 1) return "明天";
+    if (d > 0) return d + " 天后";
+    return -d + " 天前";
+  }
+  function pill(status) { return '<span class="pill" style="--pc:' + (STATUS_COLOR[status] || "var(--c-gray)") + '">' + esc(status || "—") + "</span>"; }
+  function tagsHtml(tags) {
+    return '<span class="tags">' + (tags || []).map(function (t) { return '<span class="tag" style="--tg:' + tagColor(t) + '">' + esc(t) + "</span>"; }).join("") + "</span>";
+  }
+
+  // ---------- data ----------
+  function load() {
+    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 8000);
+    return fetch("/api/data", ctrl ? { signal: ctrl.signal } : {})
+      .then(function (r) { clearTimeout(timer); if (!r.ok) throw new Error(r.status); return r.json(); })
+      .catch(function () { return fetch("data/snapshot.json").then(function (r) { return r.json(); }); });
+  }
+
+  function index(data) {
+    state.byId = {};
+    data.records.forEach(function (r) { r._kind = "record"; state.byId[r.id] = r; });
+    data.plans.forEach(function (p) { p._kind = "plan"; state.byId[p.id] = p; });
+  }
+
+  function filtered() {
+    var f = state.f, q = state.q.trim().toLowerCase();
+    return state.data.records.filter(function (r) {
+      if (f.type.size && !f.type.has(r.type)) return false;
+      if (f.status.size && !f.status.has(r.status)) return false;
+      if (f.tag.size && !r.tags.some(function (t) { return f.tag.has(t); })) return false;
+      if (q) {
+        var hay = [r.title, r.summary, r.source, r.next, r.target, r.tags.join(" ")].join(" ").toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function themes() { return state.data.plans.filter(function (p) { return p.kind === "追踪主题"; }); }
+  function events() { return state.data.plans.filter(function (p) { return p.kind === "日程事件"; }); }
+
+  // ---------- sidebar ----------
+  function renderFilters() {
+    var recs = state.data.records;
+    function group(el, key, values, colorOf) {
+      $(el).innerHTML = values.map(function (v) {
+        var n = recs.filter(function (r) { return key === "tag" ? r.tags.indexOf(v) >= 0 : r[key] === v; }).length;
+        return '<button class="fchip" type="button" data-k="' + key + '" data-v="' + esc(v) + '" aria-pressed="' + state.f[key].has(v) + '" style="--dot:' + colorOf(v) + '"><i></i>' + esc(v) + "<small>" + n + "</small></button>";
+      }).join("");
+    }
+    var tagSet = {};
+    recs.forEach(function (r) { r.tags.forEach(function (t) { tagSet[t] = (tagSet[t] || 0) + 1; }); });
+    var tagList = Object.keys(tagSet).sort(function (a, b) { return tagSet[b] - tagSet[a]; });
+    group("f-type", "type", TYPES.filter(function (t) { return recs.some(function (r) { return r.type === t; }); }), function (v) { return TYPE_COLOR[v]; });
+    group("f-status", "status", STATUSES.filter(function (s) { return recs.some(function (r) { return r.status === s; }); }), function (v) { return STATUS_COLOR[v]; });
+    group("f-tag", "tag", tagList, tagColor);
+    var any = state.f.type.size || state.f.status.size || state.f.tag.size;
+    $("f-reset").hidden = !any;
+  }
+
+  function renderSource() {
+    var el = $("src"), d = state.data;
+    el.className = "src " + (d.source === "live" ? "live" : "snap");
+    var t = new Date(d.generatedAt);
+    var when = fmtDay.format(t) + " " + fmtTime.format(t);
+    el.querySelector("span").textContent = (d.source === "live" ? "实时 · Notion · " : "快照 · ") + when;
+  }
+
+  // ---------- KPIs ----------
+  function upcoming() {
+    var list = [];
+    themes().forEach(function (t) { if (t.status === "进行中" && t.date) list.push({ date: t.date, label: "主题复查", name: t.name, id: t.id }); });
+    events().forEach(function (e) {
+      if (e.status !== "待发生" || !e.date) return;
+      list.push({ date: e.date, label: "事件", name: e.name, id: e.id });
+      if (!e.expectation) list.push({ date: addDays(e.date, -2), label: "写预期", name: e.name, id: e.id });
+    });
+    state.data.records.forEach(function (r) {
+      if (r.type === "决策" && r.reviewDate && r.status !== "已归档") list.push({ date: r.reviewDate, label: "决策回看", name: r.title, id: r.id });
+    });
+    return list.filter(function (x) { return daysUntil(x.date) >= 0; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+  }
+
+  function renderKPIs() {
+    var recs = state.data.records;
+    var c = function (fn) { return recs.filter(fn).length; };
+    var pending = c(function (r) { return r.status === "待处理"; });
+    var next = upcoming()[0];
+    var html = [
+      kpi(recs.length, "条记录"),
+      kpi(pending, "待处理", pending > 0 ? "alert" : ""),
+      kpi(c(function (r) { return r.status === "跟进中"; }), "跟进中"),
+      kpi(themes().filter(function (t) { return t.status === "进行中"; }).length, "追踪主题"),
+      kpi(events().filter(function (e) { return e.status === "待发生"; }).length, "待发生事件")
+    ];
+    if (next) {
+      html.push('<div class="kpi next"><b>' + esc(trunc(next.name, 14)) + "<em>" + rel(next.date) + "</em></b><span>下一个节点 · " + esc(next.label) + " · " + md(next.date) + "</span></div>");
+    }
+    $("kpis").innerHTML = html.join("");
+    function kpi(n, label, cls) { return '<div class="kpi ' + (cls || "") + '"><b>' + n + "</b><span>" + label + "</span></div>"; }
+  }
+
+  // ---------- feed ----------
+  function renderFeed() {
+    var recs = filtered();
+    $("n-feed").textContent = recs.length;
+    if (!recs.length) { $("v-feed").innerHTML = '<p class="empty">没有符合条件的记录。</p>'; return; }
+    var groups = {}, order = [];
+    recs.forEach(function (r) { var k = sgDay(r.created); if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(r); });
+    $("v-feed").innerHTML = order.map(function (k) {
+      var list = groups[k];
+      return '<div class="day"><div class="day-h"><b>' + mdShort(k) + "</b><span>" + fmtWeek.format(new Date(k + "T12:00:00+08:00")) + " · " + list.length + " 条</span></div>" +
+        '<div class="cards">' + list.map(card).join("") + "</div></div>";
+    }).join("");
+  }
+
+  var ICON_DERIVE = '<svg viewBox="0 0 16 16"><path d="M4 2v6a3 3 0 0 0 3 3h6M10 8l3 3-3 3"/></svg>';
+  var ICON_PLAN = '<svg viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10.5" rx="1.5"/><path d="M2.5 6.5h11M5.5 1.5v3M10.5 1.5v3"/></svg>';
+
+  function card(r) {
+    var rels = [];
+    if (r.derivedFrom.length) rels.push("<span>" + ICON_DERIVE + "衍生自 " + esc(trunc((state.byId[r.derivedFrom[0]] || {}).title, 12)) + "</span>");
+    if (r.derivedTo.length) rels.push("<span>" + ICON_DERIVE + "衍生出 " + r.derivedTo.length + " 条</span>");
+    if (r.plans.length) rels.push("<span>" + ICON_PLAN + esc(trunc((state.byId[r.plans[0]] || {}).name, 14)) + "</span>");
+    var decision = "";
+    if (r.type === "决策") {
+      decision = '<div class="decision">' +
+        (r.action ? "<div><small>动作</small><b>" + esc(r.action) + "</b></div>" : "") +
+        (r.target ? "<div><small>标的</small><b>" + esc(r.target) + "</b></div>" : "") +
+        (r.reviewDate ? "<div><small>回看日</small><b>" + mdShort(r.reviewDate) + " · " + rel(r.reviewDate) + "</b></div>" : "") +
+        (r.verdict ? "<div><small>判定</small><b>" + esc(r.verdict) + "</b></div>" : "") + "</div>";
+    }
+    return '<article class="card" tabindex="0" data-id="' + r.id + '" style="--tc:' + TYPE_COLOR[r.type] + '">' +
+      '<div class="card-meta"><span class="tbadge">' + esc(r.type) + "</span><time>" + fmtTime.format(new Date(r.created)) + '</time><span class="srcname">' + esc(r.source) + "</span></div>" +
+      "<h3>" + esc(r.title) + "</h3>" +
+      (r.summary ? '<p class="sum">' + esc(r.summary) + "</p>" : "") +
+      decision +
+      (r.next ? '<p class="next-line"><b>下一步</b><span>' + esc(r.next) + "</span></p>" : "") +
+      '<div class="card-foot"><div class="rels">' + tagsHtml(r.tags) + rels.join("") + "</div>" + pill(r.status) + "</div>" +
+      "</article>";
+  }
+
+  // ---------- graph ----------
+  function graphData() {
+    var recs = filtered(), ids = {}, nodes = [], links = [], seen = {};
+    function addLink(s, t, kind) {
+      var key = [s, t].sort().join("|") + kind;
+      if (seen[key] || !ids[s] || !ids[t]) return;
+      seen[key] = 1; links.push({ source: s, target: t, kind: kind });
+    }
+    recs.forEach(function (r) { ids[r.id] = 1; nodes.push({ id: r.id, kind: "record", label: r.title, color: TYPE_COLOR[r.type], ref: r }); });
+    state.data.plans.forEach(function (p) {
+      ids[p.id] = 1;
+      var k = p.kind === "追踪主题" ? "theme" : p.kind === "日程事件" ? "event" : "review";
+      nodes.push({ id: p.id, kind: k, label: p.name, color: k === "theme" ? "var(--c-purple)" : k === "event" ? "var(--c-blue)" : "var(--c-gray)", ref: p });
+    });
+    if ($("g-tags").checked) {
+      var tags = {};
+      recs.forEach(function (r) { r.tags.forEach(function (t) { tags[t] = 1; }); });
+      themes().forEach(function (p) { p.tags.forEach(function (t) { tags[t] = 1; }); });
+      Object.keys(tags).forEach(function (t) { ids["tag:" + t] = 1; nodes.push({ id: "tag:" + t, kind: "tag", label: "#" + t, color: tagColor(t) }); });
+      recs.forEach(function (r) { r.tags.forEach(function (t) { addLink(r.id, "tag:" + t, "tag"); }); });
+      themes().forEach(function (p) { p.tags.forEach(function (t) { addLink(p.id, "tag:" + t, "tag"); }); });
+    }
+    recs.forEach(function (r) {
+      r.derivedFrom.forEach(function (s) { addLink(s, r.id, "derive"); });
+      r.plans.forEach(function (p) { addLink(r.id, p, "plan"); });
+    });
+    state.data.plans.forEach(function (p) {
+      p.records.forEach(function (r) { addLink(r, p.id, "plan"); });
+      p.theme.forEach(function (t) { addLink(p.id, t, "theme"); });
+    });
+    return { nodes: nodes, links: links };
+  }
+
+  function nodeR(d) { return d.kind === "theme" ? 16 : d.kind === "event" ? 9 : d.kind === "review" ? 7 : d.kind === "tag" ? 5 : 9; }
+
+  var sim;
+  function renderGraph() {
+    var box = $("graph");
+    if (typeof d3 === "undefined") { box.innerHTML = '<p class="empty">图谱组件加载失败，请检查网络。</p>'; return; }
+    var W = box.clientWidth || 900, H = box.clientHeight || 600;
+    var g = graphData();
+    $("n-graph").textContent = g.nodes.filter(function (n) { return n.kind !== "tag"; }).length;
+    if (sim) sim.stop();
+    box.innerHTML = "";
+    var svg = d3.select(box).append("svg").attr("viewBox", [0, 0, W, H]).attr("role", "img").attr("aria-label", "记录、主题、事件与标签的关系图");
+    svg.append("defs").append("marker").attr("id", "arr").attr("viewBox", "0 0 10 10").attr("refX", 10).attr("refY", 5)
+      .attr("markerWidth", 7).attr("markerHeight", 7).attr("orient", "auto")
+      .append("path").attr("d", "M0 0L10 5L0 10z").style("fill", "var(--accent)");
+    var root = svg.append("g");
+    svg.call(d3.zoom().scaleExtent([0.4, 3]).on("zoom", function (e) { root.attr("transform", e.transform); }));
+
+    var link = root.append("g").selectAll("path").data(g.links).join("path")
+      .attr("class", function (d) { return "g-link " + d.kind; })
+      .attr("marker-end", function (d) { return d.kind === "derive" ? "url(#arr)" : null; });
+
+    var node = root.append("g").selectAll("g").data(g.nodes).join("g")
+      .attr("class", function (d) { return "g-node " + d.kind + "node"; })
+      .attr("tabindex", function (d) { return d.kind === "tag" ? null : 0; })
+      .on("click", function (e, d) { if (d.kind === "tag") toggleTag(d.id.slice(4)); else openDetail(d.id); })
+      .on("keydown", function (e, d) { if (e.key === "Enter" && d.kind !== "tag") openDetail(d.id); })
+      .on("mouseenter", function (e, d) { highlight(d); })
+      .on("mouseleave", function () { highlight(null); })
+      .call(d3.drag()
+        .on("start", function (e, d) { if (!e.active) sim.alphaTarget(0.25).restart(); d.fx = d.x; d.fy = d.y; })
+        .on("drag", function (e, d) { d.fx = e.x; d.fy = e.y; })
+        .on("end", function (e, d) { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+    node.each(function (d) {
+      var s = d3.select(this), r = nodeR(d);
+      if (d.kind === "event") {
+        s.append("rect").attr("x", -r).attr("y", -r).attr("width", r * 2).attr("height", r * 2).attr("rx", 2).attr("transform", "rotate(45)").style("fill", d.color);
+      } else if (d.kind === "tag") {
+        s.append("circle").attr("r", r).style("fill", "var(--surface)").style("stroke", d.color).style("stroke-width", 2);
+      } else if (d.kind === "theme") {
+        s.append("circle").attr("r", r + 5).style("fill", "none").style("stroke", d.color).style("stroke-width", 1.5).style("opacity", 0.45);
+        s.append("circle").attr("r", r).style("fill", d.color);
+      } else {
+        s.append("circle").attr("r", r).style("fill", d.color).style("stroke", "var(--surface)").style("stroke-width", 2);
+        if (d.kind === "record" && d.ref.status === "待处理") s.append("circle").attr("r", 3).attr("cx", r * 0.75).attr("cy", -r * 0.75).style("fill", "var(--c-red)").style("stroke", "var(--surface)").style("stroke-width", 1.5);
+      }
+      s.append("text").attr("x", r + 7).attr("y", 4).text(d.kind === "tag" ? d.label : trunc(d.label, 13));
+    });
+
+    var adj = {};
+    g.links.forEach(function (l) { var s = l.source.id || l.source, t = l.target.id || l.target; adj[s + "|" + t] = adj[t + "|" + s] = 1; });
+    function highlight(d) {
+      node.classed("dim", function (n) { return d && n.id !== d.id && !adj[d.id + "|" + n.id]; });
+      link.classed("dim", function (l) { return d && l.source.id !== d.id && l.target.id !== d.id; });
+    }
+
+    sim = d3.forceSimulation(g.nodes)
+      .force("link", d3.forceLink(g.links).id(function (d) { return d.id; }).distance(function (l) { return l.kind === "tag" ? 90 : l.kind === "theme" ? 70 : 80; }).strength(function (l) { return l.kind === "tag" ? 0.25 : 0.7; }))
+      .force("charge", d3.forceManyBody().strength(function (d) { return d.kind === "tag" ? -140 : -320; }))
+      .force("collide", d3.forceCollide().radius(function (d) { return nodeR(d) + 14; }))
+      .force("x", d3.forceX(W / 2).strength(0.035))
+      .force("y", d3.forceY(H / 2).strength(0.07))
+      .on("tick", function () {
+        link.attr("d", function (d) {
+          var sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y;
+          if (d.kind === "derive") { var dx = tx - sx, dy = ty - sy, len = Math.hypot(dx, dy) || 1, r = nodeR(d.target) + 3; tx -= dx / len * r; ty -= dy / len * r; }
+          return "M" + sx + "," + sy + "L" + tx + "," + ty;
+        });
+        node.attr("transform", function (d) { return "translate(" + d.x + "," + d.y + ")"; });
+      });
+    d3.select(box).append("p").attr("class", "g-hint").text("拖动节点 · 滚轮缩放 · 点击查看详情 · 点击标签筛选");
+  }
+
+  function renderLegend() {
+    var items = [
+      ['<circle cx="6" cy="6" r="5" style="fill:var(--t-info)"/>', "信息流"],
+      ['<circle cx="6" cy="6" r="5" style="fill:var(--t-idea)"/>', "灵感"],
+      ['<circle cx="6" cy="6" r="5" style="fill:var(--t-decision)"/>', "决策"],
+      ['<circle cx="6" cy="6" r="6" style="fill:var(--c-purple)"/>', "追踪主题"],
+      ['<rect x="2" y="2" width="8" height="8" transform="rotate(45 6 6)" style="fill:var(--c-blue)"/>', "日程事件"],
+      ['<path d="M0 6H18" style="stroke:var(--accent);stroke-width:1.6"/>', "衍生"],
+      ['<path d="M0 6H18" style="stroke:var(--c-orange);stroke-width:1.4;stroke-dasharray:4 3"/>', "相关计划"],
+      ['<path d="M0 6H18" style="stroke:var(--c-purple);stroke-width:1.4"/>', "所属主题"]
+    ];
+    $("g-legend").innerHTML = items.map(function (i) { return '<span><svg viewBox="0 0 18 12">' + i[0] + "</svg>" + i[1] + "</span>"; }).join("");
+  }
+
+  // ---------- events ----------
+  function renderEvents() {
+    var th = themes(), ev = events().slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    $("n-events").textContent = th.length + ev.length;
+    var html = '<div class="ev-grid">';
+    html += '<div><p class="sec-t">时间轴 <em>今天 → ' + (ev.length ? md(ev[ev.length - 1].dateEnd || ev[ev.length - 1].date) : "") + "</em></p>" + timeline() + "</div>";
+    html += "<div><p class=\"sec-t\">追踪主题 <em>" + th.length + "</em></p>" + th.map(themeCard).join("") + "</div>";
+    html += '<div><p class="sec-t">日程事件 <em>' + ev.length + '</em></p><div class="ev-list">' + ev.map(evRow).join("") + "</div></div>";
+    var reviews = state.data.plans.filter(function (p) { return p.kind === "复盘"; });
+    if (reviews.length) {
+      html += '<div><p class="sec-t">复盘记录 <em>' + reviews.length + '</em></p><div class="reviews">' + reviews.map(function (r) {
+        return '<div class="review" data-id="' + r.id + '" tabindex="0" style="cursor:pointer"><b>' + esc(r.name) + "</b><span>" + esc(r.status) + " · " + rel(r.date) + "</span></div>";
+      }).join("") + "</div></div>";
+    }
+    $("v-events").innerHTML = html + "</div>";
+  }
+
+  function themeCard(t) {
+    var evs = t.events.map(function (id) { return state.byId[id]; }).filter(Boolean);
+    return '<article class="theme-card" data-id="' + t.id + '" tabindex="0">' +
+      '<div class="theme-head"><h3>' + esc(t.name) + '</h3><span class="when">' + pill(t.status) + " · 下次复查 " + (t.date ? md(t.date) + "（" + rel(t.date) + "）" : "未设") + "</span></div>" +
+      (t.hypothesis ? '<p class="hyp"><b>假设</b>' + esc(t.hypothesis) + "</p>" : "") +
+      '<div class="signals">' +
+      (t.confirm ? '<div class="signal" style="--sc:var(--c-green)"><b>证实信号</b><p>' + esc(t.confirm) + "</p></div>" : "") +
+      (t.refute ? '<div class="signal" style="--sc:var(--c-red)"><b>推翻信号</b><p>' + esc(t.refute) + "</p></div>" : "") +
+      "</div>" +
+      '<div class="rels">' + tagsHtml(t.tags) + "<span>" + ICON_PLAN + evs.length + " 个检验事件</span><span>" + ICON_DERIVE + t.records.length + " 条相关记录</span></div>" +
+      "</article>";
+  }
+
+  function evRow(e) {
+    var theme = state.byId[e.theme[0]];
+    var flags = [];
+    if (e.status === "待发生") {
+      if (!e.expectation) flags.push('<span class="flag warn">预期未写 · 提醒 ' + mdShort(addDays(e.date, -2)) + "</span>");
+      else flags.push('<span class="flag">已写预期</span>');
+    }
+    if (e.result) flags.push('<span class="flag">已补结果</span>');
+    return '<div class="ev-row" data-id="' + e.id + '" tabindex="0">' +
+      '<div class="ev-date"><b>' + mdShort(e.date) + "</b><span>" + (e.dateEnd ? "至 " + mdShort(e.dateEnd) : e.date.slice(0, 4)) + "</span></div>" +
+      '<div class="ev-main"><b>' + esc(e.name) + "</b><small>" + (theme ? "所属主题：" + esc(theme.name) : "未挂主题") + "</small></div>" +
+      '<div class="ev-flags">' + flags.join("") + pill(e.status) + (e.status === "待发生" ? '<span class="cd">' + rel(e.date) + "</span>" : "") + "</div></div>";
+  }
+
+  function timeline() {
+    var items = [];
+    themes().forEach(function (t) { if (t.date) items.push({ id: t.id, date: t.date, end: null, name: "复查 · " + t.name, color: "var(--c-purple)", shape: "circle" }); });
+    state.data.records.forEach(function (r) { if (r.type === "决策" && r.reviewDate) items.push({ id: r.id, date: r.reviewDate, end: null, name: "决策回看 · " + r.title, color: "var(--t-decision)", shape: "circle" }); });
+    events().forEach(function (e) { if (e.date) items.push({ id: e.id, date: e.date, end: e.dateEnd, name: e.name, color: "var(--c-blue)", shape: "diamond", rem: e.status === "待发生" ? [addDays(e.date, -2), addDays(e.dateEnd || e.date, 1)] : null, noExp: !e.expectation }); });
+    state.data.plans.forEach(function (p) { if (p.kind === "复盘" && p.date) items.push({ id: p.id, date: p.date, end: null, name: p.name, color: "var(--c-gray)", shape: "circle" }); });
+    items.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    if (!items.length) return '<p class="empty">还没有带日期的主题或事件。</p>';
+
+    var today = todayKey();
+    var all = items.reduce(function (acc, i) { acc.push(i.date); if (i.end) acc.push(i.end); if (i.rem) acc.push(i.rem[0], i.rem[1]); return acc; }, [today]);
+    var minD = dayNum(all.reduce(function (a, b) { return a < b ? a : b; })) - 4;
+    var maxD = dayNum(all.reduce(function (a, b) { return a > b ? a : b; })) + 6;
+    var W = 1000, L = 20, R = 20, top = 34, row = 36, H = top + items.length * row + 14;
+    var x = function (key) { return L + (dayNum(key) - minD) / (maxD - minD) * (W - L - R); };
+    var s = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="主题复查、决策回看与日程事件的时间轴">';
+    // month ticks
+    var d0 = new Date(minD * DAY), m = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1));
+    while (m.getTime() / DAY <= maxD) {
+      var key = m.toISOString().slice(0, 10), mx = x(key);
+      s += '<g class="tl-month"><line x1="' + mx + '" x2="' + mx + '" y1="' + (top - 10) + '" y2="' + (H - 6) + '"/></g>';
+      s += '<g class="tl-axis"><text x="' + (mx + 4) + '" y="14">' + (m.getUTCMonth() === 0 ? m.getUTCFullYear() + "." : "") + (m.getUTCMonth() + 1) + "月</text></g>";
+      m = new Date(Date.UTC(m.getUTCFullYear(), m.getUTCMonth() + 1, 1));
+    }
+    var tx = x(today);
+    s += '<g class="tl-today"><line x1="' + tx + '" x2="' + tx + '" y1="' + (top - 16) + '" y2="' + (H - 6) + '"/><text x="' + (tx + 5) + '" y="' + (top - 6) + '">今天</text></g>';
+    items.forEach(function (it, i) {
+      var y = top + i * row + row / 2, cx = x(it.date), right = cx < W * 0.62;
+      s += '<g class="tl-item" data-id="' + it.id + '" tabindex="0">';
+      if (it.rem) {
+        var a = x(it.rem[0]), b = x(it.rem[1]);
+        s += '<line class="tl-rem-line" x1="' + a + '" x2="' + b + '" y1="' + y + '" y2="' + y + '"/>';
+        s += '<rect class="tl-rem" x="' + (a - 3) + '" y="' + (y - 3) + '" width="6" height="6"><title>写预期提醒 ' + it.rem[0] + "</title></rect>";
+        s += '<rect class="tl-rem" x="' + (b - 3) + '" y="' + (y - 3) + '" width="6" height="6"><title>补结果提醒 ' + it.rem[1] + "</title></rect>";
+      }
+      if (it.end) {
+        var ex = x(it.end);
+        s += '<rect x="' + (cx - 5) + '" y="' + (y - 5) + '" width="' + (ex - cx + 10) + '" height="10" rx="5" style="fill:' + it.color + '"/>';
+      } else if (it.shape === "diamond") {
+        s += '<rect x="' + (cx - 5) + '" y="' + (y - 5) + '" width="10" height="10" transform="rotate(45 ' + cx + " " + y + ')" style="fill:' + it.color + '"/>';
+      } else {
+        s += '<circle cx="' + cx + '" cy="' + y + '" r="5.5" style="fill:' + it.color + '"/>';
+      }
+      var lo = it.rem ? x(it.rem[0]) : cx, hi = it.rem ? x(it.rem[1]) : it.end ? x(it.end) : cx;
+      var lx = right ? hi + 14 : lo - 14;
+      var anchor = right ? "start" : "end";
+      s += '<text x="' + lx + '" y="' + (y - 1) + '" text-anchor="' + anchor + '">' + esc(trunc(it.name, 26)) + "</text>";
+      s += '<text class="sub" x="' + lx + '" y="' + (y + 12) + '" text-anchor="' + anchor + '">' + mdShort(it.date) + (it.end ? "–" + mdShort(it.end) : "") + " · " + rel(it.date) + (it.noExp && it.rem ? " · 预期未写" : "") + "</text>";
+      s += "</g>";
+    });
+    return '<div class="tl-wrap">' + s + "</svg></div>";
+  }
+
+  // ---------- drawer ----------
+  function field(label, val) { return val ? "<div><dt>" + label + "</dt><dd>" + val + "</dd></div>" : ""; }
+  function linkBtn(id) {
+    var o = state.byId[id]; if (!o) return "";
+    var color = o._kind === "record" ? TYPE_COLOR[o.type] : o.kind === "追踪主题" ? "var(--c-purple)" : "var(--c-blue)";
+    var name = o._kind === "record" ? o.title : o.name;
+    var sub = o._kind === "record" ? o.type : o.kind;
+    return '<button class="d-link" type="button" data-id="' + id + '" style="--tc:' + color + '"><i></i>' + esc(name) + "<small>" + esc(sub) + "</small></button>";
+  }
+  function linkGroup(label, ids) { return ids && ids.length ? '<div><p class="sec-t">' + label + '</p><div class="d-links">' + ids.map(linkBtn).join("") + "</div></div>" : ""; }
+
+  function openDetail(id) {
+    var o = state.byId[id]; if (!o) return;
+    var h;
+    if (o._kind === "record") {
+      h = '<div class="d-kicker"><span class="tbadge" style="--tc:' + TYPE_COLOR[o.type] + '">' + esc(o.type) + "</span>" + pill(o.status) + '<span class="mono">' + sgDay(o.created) + " " + fmtTime.format(new Date(o.created)) + "</span></div>" +
+        '<h2 class="d-title">' + esc(o.title) + "</h2>" +
+        (o.summary ? '<p class="d-quote" style="--tc:' + TYPE_COLOR[o.type] + '">' + esc(o.summary) + "</p>" : '<p class="d-quote">小结待复盘时补。</p>') +
+        '<dl class="d-fields">' +
+        field("下一步", esc(o.next)) + field("来源", esc(o.source)) + field("主题标签", tagsHtml(o.tags)) +
+        field("动作", esc(o.action)) + field("标的", esc(o.target)) +
+        field("回看日", o.reviewDate ? md(o.reviewDate) + "（" + rel(o.reviewDate) + "）" : "") + field("判定", esc(o.verdict)) +
+        field("最后更新", sgDay(o.updated) + " " + fmtTime.format(new Date(o.updated))) + "</dl>" +
+        linkGroup("衍生自", o.derivedFrom) + linkGroup("衍生出", o.derivedTo) + linkGroup("相关计划", o.plans) +
+        '<div class="d-actions">' + (o.link ? '<a class="btn" href="' + esc(o.link) + '" target="_blank" rel="noopener">打开原文 ↗</a>' : "") +
+        '<a class="btn ghost" href="' + notionUrl(o.id) + '" target="_blank" rel="noopener">在 Notion 中打开 ↗</a></div>';
+    } else {
+      var isEv = o.kind === "日程事件";
+      h = '<div class="d-kicker"><span class="tbadge" style="--tc:' + (o.kind === "追踪主题" ? "var(--c-purple)" : "var(--c-blue)") + '">' + esc(o.kind) + "</span>" + pill(o.status) +
+        (o.date ? '<span class="mono">' + o.date + (o.dateEnd ? " → " + o.dateEnd : "") + "</span>" : "") + "</div>" +
+        '<h2 class="d-title">' + esc(o.name) + "</h2>" +
+        (o.hypothesis ? '<p class="d-quote" style="--tc:var(--c-purple)">' + esc(o.hypothesis) + "</p>" : "") +
+        '<dl class="d-fields">' +
+        field(o.kind === "追踪主题" ? "下次复查" : "日期", o.date ? md(o.date) + (o.dateEnd ? " – " + md(o.dateEnd) : "") + "（" + rel(o.date) + "）" : "") +
+        field("证实信号", esc(o.confirm)) + field("推翻信号", esc(o.refute)) +
+        (isEv ? field("预期", o.expectation ? esc(o.expectation) : '<span class="flag warn">未写</span>') : "") +
+        (isEv ? field("结果", o.result ? esc(o.result) : "—") : "") +
+        (isEv && o.status === "待发生" ? field("提醒", "写预期 " + md(addDays(o.date, -2)) + " 09:00 · 补结果 " + md(addDays(o.dateEnd || o.date, 1)) + " 09:00（新加坡）") : "") +
+        field("判定", esc(o.verdict)) + field("主题标签", o.tags.length ? tagsHtml(o.tags) : "") + "</dl>" +
+        linkGroup("所属主题", o.theme) + linkGroup("检验事件", o.events) + linkGroup("相关记录", o.records) +
+        '<div class="d-actions"><a class="btn ghost" href="' + notionUrl(o.id) + '" target="_blank" rel="noopener">在 Notion 中打开 ↗</a></div>';
+    }
+    $("d-body").innerHTML = h;
+    $("drawer").hidden = false; $("scrim").hidden = false;
+    $("drawer").scrollTop = 0;
+    $("d-close").focus();
+  }
+  function closeDetail() { $("drawer").hidden = true; $("scrim").hidden = true; }
+
+  // ---------- routing & events ----------
+  function setView(v) {
+    if (["feed", "graph", "events"].indexOf(v) < 0) v = "feed";
+    state.view = v;
+    document.querySelectorAll(".views a").forEach(function (a) { if (a.dataset.view === v) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+    ["feed", "graph", "events"].forEach(function (k) { $("v-" + k).hidden = k !== v; });
+    if (v === "graph") renderGraph();
+  }
+
+  function rerender() {
+    renderFilters(); renderFeed();
+    if (state.view === "graph") renderGraph(); else $("n-graph").textContent = graphData().nodes.filter(function (n) { return n.kind !== "tag"; }).length;
+  }
+
+  function toggleTag(t) { if (state.f.tag.has(t)) state.f.tag.delete(t); else state.f.tag.add(t); rerender(); }
+
+  function bind() {
+    $("filters").addEventListener("click", function (e) {
+      var b = e.target.closest(".fchip");
+      if (b) { var set = state.f[b.dataset.k]; if (set.has(b.dataset.v)) set.delete(b.dataset.v); else set.add(b.dataset.v); rerender(); }
+    });
+    $("f-reset").addEventListener("click", function () { state.f.type.clear(); state.f.status.clear(); state.f.tag.clear(); rerender(); });
+    $("q").addEventListener("input", function (e) { state.q = e.target.value; rerender(); });
+    $("g-tags").addEventListener("change", renderGraph);
+    document.addEventListener("click", function (e) {
+      var el = e.target.closest("[data-id]");
+      if (el && !el.closest(".g-node")) openDetail(el.dataset.id);
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeDetail();
+      if (e.key === "Enter") { var el = e.target.closest && e.target.closest("[data-id]"); if (el && !el.classList.contains("d-link")) openDetail(el.dataset.id); }
+    });
+    $("d-close").addEventListener("click", closeDetail);
+    $("scrim").addEventListener("click", closeDetail);
+    window.addEventListener("hashchange", function () { setView(location.hash.slice(1)); });
+    var rt;
+    window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(function () { if (state.view === "graph") renderGraph(); }, 200); });
+  }
+
+  bind();
+  load().then(function (data) {
+    state.data = data; index(data);
+    renderSource(); renderKPIs(); renderFilters(); renderFeed(); renderLegend(); renderEvents();
+    $("n-graph").textContent = graphData().nodes.filter(function (n) { return n.kind !== "tag"; }).length;
+    setView(location.hash.slice(1));
+  }).catch(function () {
+    $("src").querySelector("span").textContent = "未连接 Notion";
+    $("v-feed").innerHTML = '<div class="empty"><p><b>还没有连接 Notion。</b></p>' +
+      "<p>在 Vercel 项目的 Environment Variables 中添加 <code>NOTION_TOKEN</code>（Notion Internal Integration 的 secret），" +
+      "并在 Notion 里把「信息与灵感库」「计划与关注」两个数据库连接到这个 integration，然后重新部署。</p></div>";
+  });
+})();

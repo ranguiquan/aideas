@@ -1,0 +1,731 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Aideas 方法论</title>
+<meta name="description" content="一套基于 Notion 与 Claude 技能的个人信息流管理机制：平时只捕获，事件按日程盯，判断集中在复盘。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&display=swap">
+<style>
+:root{
+  --paper:#ECEEF1; --surface:#FFFFFF; --sunk:#E3E6EA;
+  --ink:#121721; --muted:#6A7282; --line:#DADEE4;
+  --accent:#3346D3; --accent-soft:#E6E9FB;
+  --hl:#FFE45C; --hl-ink:#16222E;
+  --ok:#2E7D4F; --warn:#A8690F; --bad:#B23A3A;
+  --serif:"Noto Serif SC","Songti SC","STSong",serif;
+  --sans:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --hand:"Ma Shan Zheng","Kaiti SC","STKaiti","KaiTi",serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0C1016; --surface:#141A22; --sunk:#19202A;
+    --ink:#E7EBF1; --muted:#8C95A3; --line:#252D39;
+    --accent:#8C9BFF; --accent-soft:#1E2544;
+    --hl:#6B5A10; --hl-ink:#FFF3B0;
+    --ok:#6CC08F; --warn:#E0A94A; --bad:#EE8080;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0C1016; --surface:#141A22; --sunk:#19202A;
+  --ink:#E7EBF1; --muted:#8C95A3; --line:#252D39;
+  --accent:#8C9BFF; --accent-soft:#1E2544;
+  --hl:#6B5A10; --hl-ink:#FFF3B0;
+  --ok:#6CC08F; --warn:#E0A94A; --bad:#EE8080;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.75 var(--sans);-webkit-font-smoothing:antialiased;}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:20px}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+h1,h2,h3{font-family:var(--serif);text-wrap:balance;margin:0;line-height:1.3}
+h2{font-size:clamp(24px,3.2vw,32px);font-weight:900}
+h3{font-size:18px;font-weight:600}
+p{margin:0}
+.eyebrow{font:600 12px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--mono);font-size:.86em}
+/* user's own words: highlighter + handwriting */
+.own{font-family:var(--hand);font-size:1.12em;color:var(--hl-ink);
+  background:linear-gradient(transparent 38%,var(--hl) 38%,var(--hl) 92%,transparent 92%);padding:0 .15em;
+  -webkit-box-decoration-break:clone;box-decoration-break:clone}
+
+/* nav */
+.nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:color-mix(in srgb,var(--paper) 88%,transparent);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.nav .wrap{display:flex;align-items:center;gap:20px;min-height:52px;flex-wrap:wrap}
+.brand{font:900 16px/1 var(--serif);text-decoration:none;color:var(--ink);display:flex;gap:8px;align-items:center}
+.brand i{width:10px;height:10px;border-radius:50%;background:var(--hl);box-shadow:0 0 0 2px var(--ink)}
+.nav ul{display:flex;gap:16px;list-style:none;margin:0 0 0 auto;padding:0;flex-wrap:wrap}
+.nav ul a{color:var(--muted);text-decoration:none;font-size:14px}
+.nav ul a:hover{color:var(--ink)}
+@media (max-width:560px){.nav ul{display:none}}
+
+section{padding-block:72px}
+.sec-head{display:grid;gap:10px;margin-bottom:32px;max-width:640px}
+.sec-head p{color:var(--muted)}
+
+/* hero */
+.hero{padding-block:72px 48px}
+.hero h1{font-size:clamp(34px,6.4vw,68px);font-weight:900;letter-spacing:-.01em;margin-top:16px;max-width:15em}
+.hero h1 .own{font-size:1.02em}
+.hero .lede{margin-top:20px;max-width:36em;font-size:17px;color:var(--muted)}
+.rhythm{margin-top:48px;display:grid;grid-template-columns:repeat(3,1fr);border:1.5px solid var(--ink);background:var(--surface);border-radius:12px;overflow:hidden}
+.beat{padding:22px 22px 24px;display:grid;gap:10px;align-content:start;border-left:1.5px solid var(--ink)}
+.beat:first-child{border-left:0}
+.beat .freq{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.beat .freq b{font:900 26px/1 var(--serif)}
+.beat .freq span{font:600 12px/1 var(--mono);color:var(--muted)}
+.beat .say{font-size:14px;color:var(--muted)}
+.beat .say q{quotes:"“" "”";color:var(--ink);font-weight:500}
+.beat .skill{font:12px/1.4 var(--mono);color:var(--accent)}
+.pulse{height:28px;display:flex;align-items:flex-end;gap:3px}
+.pulse i{flex:1;background:var(--line);border-radius:1px}
+.pulse i.on{background:var(--ink)}
+.pulse i.hi{background:var(--accent)}
+@media (max-width:760px){.rhythm{grid-template-columns:1fr}.beat{border-left:0;border-top:1.5px solid var(--ink)}.beat:first-child{border-top:0}}
+
+/* principles */
+.rules{display:grid;grid-template-columns:repeat(2,1fr);gap:0;border-top:1.5px solid var(--ink)}
+.rule{padding:24px 24px 26px 0;border-bottom:1px solid var(--line);display:grid;gap:8px;grid-template-rows:auto 1fr}
+.rule:nth-child(odd){padding-right:32px;border-right:1px solid var(--line)}
+.rule:nth-child(even){padding-left:32px}
+.rule h3{font-size:20px}
+.rule p{color:var(--muted);max-width:30em}
+.rule .where{font:12px/1 var(--mono);color:var(--accent);margin-top:6px}
+@media (max-width:760px){.rules{grid-template-columns:1fr}.rule:nth-child(odd),.rule:nth-child(even){padding:22px 0;border-right:0}}
+
+/* diagram */
+.diagram{background:var(--surface);border:1.5px solid var(--ink);overflow-x:auto}
+.diagram svg{display:block;min-width:760px;width:100%;height:auto}
+.diagram text{fill:var(--ink);font-family:var(--sans)}
+.d-box{fill:var(--surface);stroke:var(--ink);stroke-width:1.5}
+.d-db{fill:var(--sunk);stroke:var(--ink);stroke-width:1.5}
+.d-skill{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}
+.d-line{stroke:var(--ink);stroke-width:1.3;fill:none}
+.d-rel{stroke:var(--accent);stroke-width:1.5;fill:none;stroke-dasharray:5 4}
+.d-muted{fill:var(--muted)!important}
+.d-acc{fill:var(--accent)!important}
+.d-hl{fill:var(--hl)}
+.legend{display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;gap:8px;align-items:center}
+.legend svg{width:28px;height:8px}
+
+/* skills tabs */
+.tabs{display:flex;gap:0;border-bottom:1.5px solid var(--ink);overflow-x:auto}
+.tab{appearance:none;border:0;background:none;color:var(--muted);font:500 15px/1 var(--sans);padding:14px 18px 13px;cursor:pointer;white-space:nowrap;
+  border-bottom:3px solid transparent;margin-bottom:-1.5px;display:grid;gap:6px;text-align:left}
+.tab small{font:11px/1 var(--mono);color:var(--muted)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+.tab:hover{color:var(--ink)}
+.panel{padding-top:28px;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:40px}
+.panel .about{display:grid;gap:16px;align-content:start}
+.panel .about p{color:var(--muted)}
+.steps{margin:0;padding:0;list-style:none;display:grid;gap:10px;counter-reset:s}
+.steps li{counter-increment:s;display:grid;grid-template-columns:28px 1fr;gap:10px;font-size:14px}
+.steps li::before{content:counter(s);font:600 12px/24px var(--mono);text-align:center;border:1px solid var(--ink);border-radius:50%;width:24px;height:24px}
+.chip{display:inline-block;font:12px/1 var(--mono);padding:5px 8px;border:1px solid var(--line);border-radius:3px;background:var(--surface);color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+@media (max-width:860px){.panel{grid-template-columns:1fr;gap:28px}}
+
+.stage{background:var(--surface);border:1.5px solid var(--ink);padding:22px;display:grid;gap:14px;align-content:start}
+.stage-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.btn{appearance:none;font:500 13px/1 var(--sans);padding:9px 14px;border:1.5px solid var(--ink);background:var(--ink);color:var(--paper);cursor:pointer;border-radius:2px}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn:hover{opacity:.88}
+.sample{font:11px/1 var(--mono);color:var(--warn);border:1px dashed var(--warn);padding:4px 6px;border-radius:2px}
+
+/* chat */
+.chat{display:grid;gap:12px}
+.msg{max-width:88%;padding:10px 14px;border-radius:3px;font-size:14px;transition:opacity .35s,transform .35s}
+.msg.u{justify-self:end;background:var(--sunk)}
+.msg.c{justify-self:start;border:1px solid var(--line)}
+.msg .who{display:block;font:11px/1 var(--mono);color:var(--muted);margin-bottom:6px}
+.msg ul{margin:6px 0 0;padding-left:18px}
+.msg.pending{opacity:.12;transform:translateY(4px)}
+.record{border:1.5px solid var(--ink);display:grid;transition:opacity .35s}
+.record.pending{opacity:.12}
+.record-row{display:grid;grid-template-columns:96px 1fr;border-top:1px solid var(--line);font-size:13.5px}
+.record-row:first-child{border-top:0}
+.record-row > *{padding:8px 12px}
+.record-row .k{font:12px/1.9 var(--mono);color:var(--muted);background:var(--sunk);border-right:1px solid var(--line)}
+.pill{display:inline-block;font:12px/1 var(--sans);padding:4px 8px;border-radius:99px;border:1px solid currentColor}
+.pill.todo{color:var(--warn)}.pill.go{color:var(--accent)}.pill.done{color:var(--ok)}.pill.drop{color:var(--muted)}
+
+/* timeline */
+.tl{position:relative;display:grid;gap:0;padding-left:26px}
+.tl::before{content:"";position:absolute;left:7px;top:8px;bottom:8px;width:1.5px;background:var(--ink)}
+.tl-item{position:relative;padding:0 0 18px}
+.tl-item::before{content:"";position:absolute;left:-26px;top:6px;width:14px;height:14px;border-radius:50%;background:var(--surface);border:1.5px solid var(--ink)}
+.tl-item.ev::before{background:var(--ink)}
+.tl-item.rem::before{background:var(--hl)}
+.tl-item .t{font:600 12px/1.6 var(--mono);color:var(--accent)}
+.tl-item b{font-weight:700}
+.tl-item p{font-size:14px;color:var(--muted)}
+.tl-item:last-child{padding-bottom:0}
+.callout{border-left:3px solid var(--hl);background:var(--sunk);padding:10px 14px;font-size:14px}
+
+/* review */
+.modes{display:flex;gap:6px;flex-wrap:wrap}
+.mode{appearance:none;font:500 13px/1 var(--sans);padding:8px 12px;border:1.5px solid var(--line);background:transparent;color:var(--muted);cursor:pointer;border-radius:2px}
+.mode[aria-pressed="true"]{border-color:var(--ink);color:var(--ink);background:var(--sunk)}
+.range{font:12px/1.5 var(--mono);color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:10px}
+.blocks{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.blocks li{display:grid;grid-template-columns:24px 1fr auto;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:14px;align-items:baseline;transition:opacity .25s}
+.blocks li .n{font:12px/1 var(--mono);color:var(--muted)}
+.blocks li small{color:var(--muted);display:block;font-size:12.5px;line-height:1.55}
+.blocks li .tag{font:11px/1 var(--mono);color:var(--muted);white-space:nowrap}
+.blocks li.off{opacity:.3}
+.blocks li.off b{text-decoration:line-through}
+.qs{display:grid;gap:8px;margin:0;padding:14px 16px 14px 34px;background:var(--sunk);font-size:14px}
+.qs li.off{opacity:.3;text-decoration:line-through}
+.qs-title{font:600 12px/1 var(--mono);color:var(--muted);letter-spacing:.08em}
+
+/* lifecycle */
+.lcs{display:grid;gap:14px}
+.lc{display:grid;grid-template-columns:150px 1fr;gap:20px;align-items:center;padding:18px 20px;background:var(--surface);border:1px solid var(--line)}
+.lc h3{font-size:16px}
+.lc .who{font:11px/1.5 var(--mono);color:var(--muted);margin-top:4px}
+.flow{display:flex;align-items:center;flex-wrap:wrap;gap:6px 4px;font-size:14px}
+.st{padding:5px 11px;border:1.5px solid var(--ink);border-radius:2px;font-weight:500;background:var(--paper);white-space:nowrap}
+.st.end{border-style:solid;background:var(--ink);color:var(--paper)}
+.st.alt{border-style:dashed;color:var(--muted);border-color:var(--muted)}
+.arr{color:var(--muted);font:12px/1 var(--mono);padding:0 4px;white-space:nowrap}
+.arr em{font-style:normal;color:var(--accent)}
+.note{font-size:13px;color:var(--muted);flex-basis:100%;margin-top:6px}
+@media (max-width:640px){.lc{grid-template-columns:1fr;gap:10px}}
+
+/* fields */
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.tablewrap{overflow-x:auto;background:var(--surface);border:1.5px solid var(--ink)}
+.tablewrap h3{padding:14px 16px;border-bottom:1.5px solid var(--ink);font-size:16px;display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.tablewrap h3 span{font:12px/1 var(--mono);color:var(--muted);font-weight:400}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:420px}
+td,th{text-align:left;padding:7px 16px;border-top:1px solid var(--line);vertical-align:top}
+th{font:600 11px/1 var(--mono);color:var(--muted);letter-spacing:.06em;background:var(--sunk);border-top:0;padding-block:9px}
+td:first-child{white-space:nowrap;font-weight:500}
+td:nth-child(2){font:12px/1.9 var(--mono);color:var(--accent);white-space:nowrap}
+td:last-child{color:var(--muted)}
+tr.key td:first-child{background:linear-gradient(transparent 55%,var(--hl) 55%,var(--hl) 90%,transparent 90%);color:var(--hl-ink)}
+@media (max-width:860px){.fields{grid-template-columns:1fr}}
+
+footer{border-top:1.5px solid var(--ink);padding-block:28px 48px;color:var(--muted);font-size:13px}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+
+<nav class="nav" aria-label="页面导航">
+  <div class="wrap">
+    <a class="brand" href="/"><i aria-hidden="true"></i>Aideas 方法论</a>
+    <ul>
+      <li><a href="#rules">原则</a></li>
+      <li><a href="#structure">结构</a></li>
+      <li><a href="#skills">技能</a></li>
+      <li><a href="#lifecycle">生命周期</a></li>
+      <li><a href="#fields">字段</a></li>
+      <li><a href="/">← 回到信息台</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <p class="eyebrow">Notion × Claude · 个人信息流管理</p>
+    <h1>平时只捕获，<span class="own">判断</span>集中在复盘。</h1>
+    <p class="lede">三个 Claude 技能，两个 Notion 数据库。信息和想法随手入库，与主题相关的事件按日程提醒，所有取舍留到复盘时由你自己来做。</p>
+
+    <div class="rhythm" role="list">
+      <div class="beat" role="listitem">
+        <div class="freq"><b>捕获</b><span>随时</span></div>
+        <div class="pulse" aria-hidden="true" data-pattern="1101110111011101110111"></div>
+        <p class="say">说一句 <q>记进库里</q>，先写下你自己的结论，再入库。</p>
+        <p class="skill">notion-info-vault</p>
+      </div>
+      <div class="beat" role="listitem">
+        <div class="freq"><b>盯事件</b><span>按日程</span></div>
+        <div class="pulse" aria-hidden="true" data-pattern="0001000200000001000200"></div>
+        <p class="say">事件前两天提醒 <q>写预期</q>，结束后次日早上提醒 <q>补结果</q>。</p>
+        <p class="skill">plan-event-tracker</p>
+      </div>
+      <div class="beat" role="listitem">
+        <div class="freq"><b>复盘</b><span>不定期</span></div>
+        <div class="pulse" aria-hidden="true" data-pattern="0000000200000000000002"></div>
+        <p class="say">说一句 <q>复盘</q>，Claude 汇总，你来分拣、回看、定主题。</p>
+        <p class="skill">periodic-review</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="rules">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">原则</p>
+      <h2>这套机制在防什么</h2>
+      <p>每条规则都在对付一种具体的失真：AI 替你下结论、事后诸葛亮、把运气当判断力、积压冒充投入。</p>
+    </div>
+    <div class="rules">
+      <article class="rule">
+        <h3>「一句话小结」必须是<span class="own">你的原话</span></h3>
+        <p>谁先写总结，谁就框定了复盘时的第一印象。Claude 先问、不先给；你的话再粗糙也逐字照录，不润色。不想写就留空，复盘时再补。</p>
+        <p class="where">记进库里 · 小结对话</p>
+      </article>
+      <article class="rule">
+        <h3>捕获时不做判断</h3>
+        <p>新记录一律是「待处理」，不论讨论看起来多完整。跟进、归档、放弃、新建主题，都是复盘时的事。</p>
+        <p class="where">记进库里 · 状态</p>
+      </article>
+      <article class="rule">
+        <h3>预期必须在事前写</h3>
+        <p>事后写的预期会被结果污染。事件已经发生，就只能写进「结果」，并注明「事后记录，无事前预期」。</p>
+        <p class="where">计划事件 · 写预期</p>
+      </article>
+      <article class="rule">
+        <h3>判定看理由，不看盈亏</h3>
+        <p>赚钱但理由没应验，是理由不成立；亏钱但理由应验，可以是成立。两者分开记，累积下来才能分清判断力和运气。</p>
+        <p class="where">复盘 · 决策回看</p>
+      </article>
+      <article class="rule">
+        <h3>被推翻是结案，不是放弃</h3>
+        <p>有定论就结案，哪怕结论是推翻。把推翻记成放弃，会抹掉最有校准价值的数据。</p>
+        <p class="where">复盘 · 追踪主题</p>
+      </article>
+      <article class="rule">
+        <h3>跟进中是承诺，不是积压</h3>
+        <p>进行中的追踪主题保持 3–5 个。「跟进中」代表你承诺投入的时间，数量持续增长时 Claude 会提醒你取舍。</p>
+        <p class="where">复盘 · 原则</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="structure">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">结构</p>
+      <h2>两个库，三个技能，一组提醒</h2>
+      <p>「信息与灵感库」装你读到和想到的东西，「计划与关注」装你押注的假设和检验它们的事件。技能负责写入，关联字段把两边串起来。</p>
+    </div>
+    <div class="diagram">
+      <svg viewBox="0 0 900 430" role="img" aria-labelledby="dg-t">
+        <title id="dg-t">三个技能写入两个 Notion 数据库，数据库之间通过关联字段互相连接，定时提醒触发计划事件技能</title>
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" style="fill:var(--ink)"/>
+          </marker>
+          <marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" style="fill:var(--accent)"/>
+          </marker>
+        </defs>
+
+        <!-- skills -->
+        <rect class="d-skill" x="40" y="24" width="220" height="62" rx="2"/>
+        <text x="150" y="50" text-anchor="middle" font-size="15" font-weight="700">记进库里</text>
+        <text x="150" y="70" text-anchor="middle" font-size="11" class="d-acc" font-family="monospace">notion-info-vault</text>
+
+        <rect class="d-skill" x="340" y="24" width="220" height="62" rx="2"/>
+        <text x="450" y="50" text-anchor="middle" font-size="15" font-weight="700">复盘</text>
+        <text x="450" y="70" text-anchor="middle" font-size="11" class="d-acc" font-family="monospace">periodic-review</text>
+
+        <rect class="d-skill" x="640" y="24" width="220" height="62" rx="2"/>
+        <text x="750" y="50" text-anchor="middle" font-size="15" font-weight="700">计划事件</text>
+        <text x="750" y="70" text-anchor="middle" font-size="11" class="d-acc" font-family="monospace">plan-event-tracker</text>
+
+        <!-- writes -->
+        <path class="d-line" d="M150 86 V150" marker-end="url(#ah)"/>
+        <text x="160" y="124" font-size="12" class="d-muted">新建 · 状态=待处理</text>
+        <path class="d-line" d="M400 86 L260 150" marker-end="url(#ah)"/>
+        <path class="d-line" d="M500 86 L640 150" marker-end="url(#ah)"/>
+        <text x="450" y="128" text-anchor="middle" font-size="12" class="d-muted">分拣 · 回看 · 定主题</text>
+        <path class="d-line" d="M750 86 V150" marker-end="url(#ah)"/>
+        <text x="740" y="124" text-anchor="end" font-size="12" class="d-muted">加事件 · 写预期 · 补结果</text>
+
+        <!-- DB left -->
+        <rect class="d-db" x="40" y="152" width="300" height="200" rx="2"/>
+        <text x="60" y="182" font-size="17" font-weight="700">信息与灵感库</text>
+        <rect class="d-box" x="60" y="198" width="80" height="30"/>
+        <text x="100" y="218" text-anchor="middle" font-size="13">信息流</text>
+        <rect class="d-box" x="150" y="198" width="80" height="30"/>
+        <text x="190" y="218" text-anchor="middle" font-size="13">灵感</text>
+        <rect class="d-box" x="240" y="198" width="80" height="30"/>
+        <text x="280" y="218" text-anchor="middle" font-size="13">决策</text>
+        <rect class="d-hl" x="60" y="246" width="120" height="22"/>
+        <text x="66" y="262" font-size="13" font-weight="700" style="fill:var(--hl-ink)">一句话小结</text>
+        <text x="188" y="262" font-size="12" class="d-muted">用户原话</text>
+        <text x="60" y="292" font-size="12" class="d-muted">下一步 · 主题标签 · 来源 · 链接</text>
+        <text x="60" y="314" font-size="12" class="d-muted">决策另有：标的 · 动作 · 回看日 · 判定</text>
+
+        <!-- DB right -->
+        <rect class="d-db" x="560" y="152" width="300" height="200" rx="2"/>
+        <text x="580" y="182" font-size="17" font-weight="700">计划与关注</text>
+        <rect class="d-box" x="580" y="198" width="80" height="30"/>
+        <text x="620" y="218" text-anchor="middle" font-size="13">追踪主题</text>
+        <rect class="d-box" x="670" y="198" width="80" height="30"/>
+        <text x="710" y="218" text-anchor="middle" font-size="13">日程事件</text>
+        <rect class="d-box" x="760" y="198" width="80" height="30"/>
+        <text x="800" y="218" text-anchor="middle" font-size="13">复盘</text>
+        <text x="580" y="262" font-size="12" class="d-muted">主题：假设 · 证实信号 · 推翻信号</text>
+        <text x="580" y="284" font-size="12" class="d-muted">事件：日期 · 预期 · 结果</text>
+        <text x="580" y="306" font-size="12" class="d-muted">结案：判定（证实 / 部分成立 / 推翻）</text>
+
+        <!-- relations between -->
+        <path class="d-rel" d="M340 232 H560" marker-end="url(#ahb)" marker-start="url(#ahb)"/>
+        <text x="450" y="222" text-anchor="middle" font-size="12" class="d-acc">相关计划 ⇄ 相关记录</text>
+
+        <!-- self relations -->
+        <path class="d-rel" d="M120 352 C120 400, 260 400, 260 352" marker-end="url(#ahb)"/>
+        <text x="190" y="412" text-anchor="middle" font-size="12" class="d-acc">衍生自 ⇄ 衍生出</text>
+        <path class="d-rel" d="M640 352 C640 400, 780 400, 780 352" marker-end="url(#ahb)"/>
+        <text x="710" y="412" text-anchor="middle" font-size="12" class="d-acc">所属主题 ⇄ 检验事件</text>
+
+        <!-- reminders -->
+        <rect x="400" y="300" width="100" height="52" rx="2" style="fill:var(--hl)"/>
+        <text x="450" y="322" text-anchor="middle" font-size="13" font-weight="700" style="fill:var(--hl-ink)">定时提醒</text>
+        <text x="450" y="340" text-anchor="middle" font-size="11" style="fill:var(--hl-ink)">每个事件 ×2</text>
+        <path class="d-line" d="M500 326 C 600 326, 620 110, 690 88" marker-end="url(#ah)"/>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><svg viewBox="0 0 28 8"><path d="M0 4H28" style="stroke:var(--ink);stroke-width:1.5"/></svg>技能读写</span>
+      <span><svg viewBox="0 0 28 8"><path d="M0 4H28" style="stroke:var(--accent);stroke-width:1.5;stroke-dasharray:5 4"/></svg>Notion 双向关联</span>
+      <span><svg viewBox="0 0 28 8"><rect width="28" height="8" style="fill:var(--hl)"/></svg>只由你本人写的内容 / 提醒</span>
+    </div>
+  </div>
+</section>
+
+<section id="skills">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">技能</p>
+      <h2>三个技能各做什么</h2>
+      <p>右侧是示例演示，内容为虚构，只用来说明流程。</p>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="技能">
+      <button class="tab" role="tab" id="t-vault" aria-controls="p-vault" aria-selected="true">记进库里<small>捕获</small></button>
+      <button class="tab" role="tab" id="t-event" aria-controls="p-event" aria-selected="false" tabindex="-1">计划事件<small>盯事件</small></button>
+      <button class="tab" role="tab" id="t-review" aria-controls="p-review" aria-selected="false" tabindex="-1">复盘<small>判断</small></button>
+    </div>
+
+    <!-- VAULT -->
+    <div class="panel" role="tabpanel" id="p-vault" aria-labelledby="t-vault">
+      <div class="about">
+        <h3>低摩擦捕获，先问你怎么想</h3>
+        <p>入库前 Claude 先请你用一两句话说出结论，不先给自己的总结。你说完后，它补充或反驳两三点，顺带草拟「下一步」请你确认，然后才写进 Notion。</p>
+        <ol class="steps">
+          <li>识别要归档的是哪一段对话</li>
+          <li>请你写原话小结，Claude 回应补充与反驳</li>
+          <li>你定稿，一并确认「下一步」</li>
+          <li>判断衍生关系、是否挂到进行中的主题</li>
+          <li>写入 Notion，状态设为「待处理」</li>
+        </ol>
+        <div class="chips"><span class="chip">记进库里</span><span class="chip">存进信息库</span><span class="chip">归档这次讨论</span><span class="chip">这是 XX 那条的后续</span></div>
+      </div>
+      <div class="stage" aria-live="polite">
+        <div class="stage-head">
+          <span class="sample">示例</span>
+          <button class="btn ghost" id="replay-chat" type="button">逐步回放</button>
+        </div>
+        <div class="chat" id="chat">
+          <div class="msg u"><span class="who">你</span>记进库里</div>
+          <div class="msg c"><span class="who">Claude</span>用一两句话说说你从这段讨论里带走的结论？怎么粗糙都行。</div>
+          <div class="msg u"><span class="who">你</span><span class="own">降息节奏会比市场想的慢，先别急着拉长久期。</span></div>
+          <div class="msg c"><span class="who">Claude</span>两点回应：
+            <ul>
+              <li>补充：讨论里提到的主要依据是服务通胀粘性，你的结论没写原因。</li>
+              <li>反驳：「比市场想的慢」要看哪段期限，短端已经定价了不少。</li>
+            </ul>
+            要调整吗？下一步我草拟为：<b>看下次 CPI 的核心服务项是否继续回落</b>。</div>
+          <div class="msg u"><span class="who">你</span>小结就这样，下一步可以。</div>
+        </div>
+        <div class="record" id="record" aria-label="写入的 Notion 记录">
+          <div class="record-row"><span class="k">标题</span><span>美联储降息节奏与久期配置</span></div>
+          <div class="record-row"><span class="k">类型</span><span>灵感</span></div>
+          <div class="record-row"><span class="k">一句话小结</span><span><span class="own">降息节奏会比市场想的慢，先别急着拉长久期。</span></span></div>
+          <div class="record-row"><span class="k">下一步</span><span>看下次 CPI 的核心服务项是否继续回落</span></div>
+          <div class="record-row"><span class="k">状态</span><span><span class="pill todo">待处理</span></span></div>
+          <div class="record-row"><span class="k">相关计划</span><span>可能和「利率路径」主题有关，复盘时确认</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EVENT -->
+    <div class="panel" role="tabpanel" id="p-event" aria-labelledby="t-event" hidden>
+      <div class="about">
+        <h3>只处理「时间不等人」的动作</h3>
+        <p>计划库的调整原则上留给复盘。这个技能只管事件：加事件、写预期、补结果、改期或取消。每个事件自动配两个一次性提醒，写预期不必等到下次复盘。</p>
+        <ol class="steps">
+          <li>核实官方日期，按新加坡时间（UTC+8）记录</li>
+          <li>挂到一个进行中的追踪主题；找不到就问你，不为挂靠新建主题</li>
+          <li>写一句「检验点」：这个事件对主题意味着什么</li>
+          <li>创建写预期、补结果两个提醒，trigger ID 记在页面里</li>
+        </ol>
+        <div class="callout">不批量导入整份经济日历。只录入与进行中主题相关的事件，因为每个事件都会带来两个提醒。</div>
+      </div>
+      <div class="stage">
+        <div class="stage-head">
+          <strong>一个事件的时间线</strong>
+          <span class="sample">示例</span>
+        </div>
+        <div class="tl">
+          <div class="tl-item">
+            <p class="t">随时</p>
+            <b>加事件</b>
+            <p>「把下次 CPI 加进计划」→ 状态「待发生」，挂到「利率路径」主题。</p>
+          </div>
+          <div class="tl-item rem">
+            <p class="t">事件前 2 天 · 09:00 新加坡</p>
+            <b>写预期提醒</b>
+            <p>Claude 读取主题假设和同主题先前事件的结果，整理 3–5 行背景，请你写下预期：数值或方向，以及偏离意味着什么。</p>
+          </div>
+          <div class="tl-item ev">
+            <p class="t">事件当天</p>
+            <b>CPI 公布</b>
+            <p>48 小时内才加入的事件不设写预期提醒，当场问你。</p>
+          </div>
+          <div class="tl-item rem">
+            <p class="t">结束后第一个新加坡早上 · 09:00</p>
+            <b>补结果提醒</b>
+            <p>Claude 搜索核实实际数据（附来源），对照你的预期和主题信号，请你确认后写入，状态改为「已完成」。</p>
+          </div>
+          <div class="tl-item">
+            <p class="t">下次复盘</p>
+            <b>漏补结果兜底</b>
+            <p>日期已过仍是「待发生」的事件，排在复盘摘要最前面。触及证实或推翻信号时提示，但不改主题本身。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- REVIEW -->
+    <div class="panel" role="tabpanel" id="p-review" aria-labelledby="t-review" hidden>
+      <div class="about">
+        <h3>Claude 整理，你来取舍</h3>
+        <p>复盘没有固定周期，可以由每周的定时提醒触发，也可以随时手动开始。区间起点取上一条「复盘」记录的创建时间。跳过的复盘不补做，区间长就压缩呈现。</p>
+        <ol class="steps">
+          <li><span><b>阶段一</b>：Claude 取数、聚类，生成约一屏的摘要，末尾问三个问题</span></li>
+          <li><span><b>阶段二</b>：你回答几句，Claude 只执行你明确表达的变更</span></li>
+          <li>写一条「复盘 YYYY-MM-DD」记录，作为下次的起点</li>
+        </ol>
+        <div class="callout">定时触发时只发摘要，停在阶段一：不代你回答，不改任何状态。</div>
+      </div>
+      <div class="stage">
+        <div class="stage-head">
+          <div class="modes" role="group" aria-label="复盘模式">
+            <button class="mode" type="button" data-mode="std" aria-pressed="true">标准</button>
+            <button class="mode" type="button" data-mode="long" aria-pressed="false">长区间（&gt;21 天）</button>
+            <button class="mode" type="button" data-mode="short" aria-pressed="false">只有 10 分钟</button>
+          </div>
+          <span class="sample">示例</span>
+        </div>
+        <p class="range" id="range">本次覆盖 9月18日–9月25日（自上次复盘起）· 前瞻至 10月2日</p>
+        <ol class="blocks" id="blocks">
+          <li data-in="std long"><span class="n">1</span><div><b>主题信号</b><small id="b1">按主题标签和「下一步」聚类：利率路径 4 条，其中 1 条与原假设方向相反。</small></div><span class="tag">聚类</span></li>
+          <li data-in="std long"><span class="n">2</span><div><b>待处理分拣</b><small id="b2">逐条列标题和你的原话，给出建议去向；超过 14 天的单独标出。</small></div><span class="tag">建议</span></li>
+          <li data-in="std long short"><span class="n">3</span><div><b>跟进中兑现检查</b><small>有产出的问能否收尾；两次复盘都没动静的标为「停滞」。</small></div><span class="tag">停滞</span></li>
+          <li data-in="std long short"><span class="n">4</span><div><b>决策回看</b><small>原样引用当时的理由与认错条件，搜索核实后给出建议判定。</small></div><span class="tag">到期</span></li>
+          <li data-in="std long short"><span class="n">5</span><div><b>事件回看</b><small>漏补结果的事件排最前；已完成事件对照预期与结果。</small></div><span class="tag">漏补</span></li>
+          <li data-in="std long short"><span class="n">6</span><div><b>即将发生的事件</b><small>前瞻区间内的事件，标出还没写预期的。</small></div><span class="tag">前瞻</span></li>
+          <li data-in="std long"><span class="n">7</span><div><b>需复查的主题</b><small>复查日到期的主题及相关记录数；检验事件都已完成的，提示是否结案。</small></div><span class="tag">结案?</span></li>
+          <li data-in="std long"><span class="n">8</span><div><b>类型存疑</b><small>同一种情况累计 2–3 次，建议新增类型。有才展示。</small></div><span class="tag">可选</span></li>
+          <li data-in="std long"><span class="n">9</span><div><b>判断记录</b><small>主题结案 证实 / 部分 / 推翻，决策判定 成立 / 部分 / 不成立。</small></div><span class="tag">命中率</span></li>
+          <li data-in="long" class="off" id="trend"><span class="n">+</span><div><b>趋势变化</b><small>同一主题在区间前半段和后半段的热度或观点有何不同。</small></div><span class="tag">长区间</span></li>
+        </ol>
+        <div>
+          <p class="qs-title">摘要末尾固定的三个问题</p>
+          <ol class="qs" id="qs">
+            <li data-in="std long">这段时间什么东西反复出现，值得作为主题追踪吗？</li>
+            <li data-in="std long">有什么信息改变了你原来的看法？</li>
+            <li data-in="std long short">接下来你要带着什么问题去看信息流？</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="lifecycle">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">生命周期</p>
+      <h2>状态什么时候变，由谁来变</h2>
+      <p>捕获只会产生「待处理」和「待发生」。其余每一次状态变化，都要经过复盘或事件技能，并由你确认。</p>
+    </div>
+    <div class="lcs">
+      <div class="lc">
+        <div><h3>信息 · 灵感记录</h3><p class="who">信息与灵感库</p></div>
+        <div class="flow">
+          <span class="st">待处理</span><span class="arr"><em>复盘</em> →</span>
+          <span class="st">跟进中</span><span class="arr"><em>下一步完成</em> →</span>
+          <span class="st end">已归档</span>
+          <span class="arr">或</span><span class="st alt">已放弃</span>
+          <p class="note">完成情况看「衍生出」和「相关计划」，不靠状态本身。停滞两次复盘的，建议降级。</p>
+        </div>
+      </div>
+      <div class="lc">
+        <div><h3>决策</h3><p class="who">信息与灵感库 · 类型=决策</p></div>
+        <div class="flow">
+          <span class="st">待处理</span><span class="arr"><em>复盘</em> →</span>
+          <span class="st">跟进中</span><span class="arr"><em>回看日到期</em> →</span>
+          <span class="st end">已归档</span>
+          <span class="arr">判定：</span><span class="pill done">理由成立</span><span class="pill go">部分成立</span><span class="pill drop">理由不成立</span>
+          <p class="note">缺理由的，分拣时是最后一次补记机会，注明「事后补记」。延长观察就改回看日，保持跟进中。</p>
+        </div>
+      </div>
+      <div class="lc">
+        <div><h3>追踪主题</h3><p class="who">计划与关注 · 类型=追踪主题</p></div>
+        <div class="flow">
+          <span class="st">进行中</span><span class="arr"><em>有定论</em> →</span>
+          <span class="st end">已完成（结案）</span>
+          <span class="arr">判定：</span><span class="pill done">证实</span><span class="pill go">部分成立</span><span class="pill drop">推翻</span>
+          <p class="note">没有定论就失去兴趣才是「已放弃」，判定留空。结案或放弃时，逐个处理名下还没发生的检验事件：取消或改挂。</p>
+        </div>
+      </div>
+      <div class="lc">
+        <div><h3>日程事件</h3><p class="who">计划与关注 · 类型=日程事件</p></div>
+        <div class="flow">
+          <span class="st">待发生</span><span class="arr"><em>补结果</em> →</span>
+          <span class="st end">已完成</span>
+          <span class="arr">或 <em>取消</em> →</span><span class="st alt">已放弃</span>
+          <p class="note">改期时两个提醒一起重算；取消时删掉还没触发的提醒。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="fields">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">字段</p>
+      <h2>两个库的关键字段</h2>
+      <p>技能每次运行前都会重新读取 Notion 的实际 schema，你改了字段名，以实际为准。</p>
+    </div>
+    <div class="fields">
+      <div class="tablewrap">
+        <h3>信息与灵感库 <span>Notion 数据库</span></h3>
+        <table>
+          <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>标题</td><td>title</td><td>Claude 拟定，8–20 字，说「这条关于什么」</td></tr>
+            <tr><td>类型</td><td>select</td><td>信息流 / 灵感 / 决策</td></tr>
+            <tr class="key"><td>一句话小结</td><td>text</td><td>你的原话，全库最重要的字段</td></tr>
+            <tr><td>下一步</td><td>text</td><td>入库时的意图；空着和「无」含义不同</td></tr>
+            <tr><td>状态</td><td>select</td><td>捕获时只用「待处理」</td></tr>
+            <tr><td>主题标签</td><td>multi</td><td>与计划库保持一致</td></tr>
+            <tr><td>来源 / 链接</td><td>text / url</td><td>媒体名、卖方名，或「与 Claude 的讨论」</td></tr>
+            <tr><td>衍生自</td><td>relation</td><td>自关联；对侧「衍生出」自动显示</td></tr>
+            <tr><td>相关计划</td><td>relation</td><td>指向主题或事件</td></tr>
+            <tr><td>标的 · 动作 · 回看日 · 判定</td><td>决策用</td><td>判定看理由，不看盈亏</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tablewrap">
+        <h3>计划与关注 <span>Notion 数据库</span></h3>
+        <table>
+          <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>名称</td><td>title</td><td>复盘记录为「复盘 YYYY-MM-DD」</td></tr>
+            <tr><td>类型</td><td>select</td><td>追踪主题 / 日程事件 / 复盘</td></tr>
+            <tr><td>日期</td><td>date</td><td>主题是下次复查日；事件是发生时间（新加坡）</td></tr>
+            <tr><td>状态</td><td>select</td><td>进行中 / 待发生 / 已完成 / 已放弃</td></tr>
+            <tr class="key"><td>假设</td><td>text</td><td>你的判断；改写前的原文留在变更记录</td></tr>
+            <tr><td>证实 / 推翻信号</td><td>text</td><td>「维持现状」类要写上下两个方向</td></tr>
+            <tr class="key"><td>预期</td><td>text</td><td>事前写，标注写下的日期</td></tr>
+            <tr><td>结果</td><td>text</td><td>实际数据、市场反应、对假设的含义</td></tr>
+            <tr><td>判定</td><td>select</td><td>仅主题结案用：证实 / 部分成立 / 推翻</td></tr>
+            <tr><td>所属主题 · 检验事件</td><td>relation</td><td>事件 ⇄ 主题</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p><a href="/">Aideas 信息台</a> · 基于 Notion 与 Claude Skills</p>
+    <p>高亮手写体 = 只能由你本人写的内容</p>
+  </div>
+</footer>
+
+<script>
+(function(){
+  // rhythm pulses
+  document.querySelectorAll('.pulse').forEach(function(el){
+    el.dataset.pattern.split('').forEach(function(c){
+      var i=document.createElement('i');
+      i.style.height = c==='0' ? '20%' : c==='2' ? '100%' : '65%';
+      if(c==='1') i.className='on';
+      if(c==='2') i.className='hi';
+      el.appendChild(i);
+    });
+  });
+
+  // tabs
+  var tabs=[].slice.call(document.querySelectorAll('.tab'));
+  function select(tab){
+    tabs.forEach(function(t){
+      var on=t===tab;
+      t.setAttribute('aria-selected',on);
+      t.tabIndex=on?0:-1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden=!on;
+    });
+    try{localStorage.setItem('skill-tab',tab.id)}catch(e){}
+  }
+  tabs.forEach(function(t,i){
+    t.addEventListener('click',function(){select(t)});
+    t.addEventListener('keydown',function(e){
+      var d=e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0;
+      if(!d) return;
+      var n=tabs[(i+d+tabs.length)%tabs.length]; select(n); n.focus();
+    });
+  });
+  try{var saved=document.getElementById(localStorage.getItem('skill-tab')); if(saved) select(saved);}catch(e){}
+
+  // chat replay
+  var timers=[];
+  document.getElementById('replay-chat').addEventListener('click',function(){
+    timers.forEach(clearTimeout); timers=[];
+    var items=[].slice.call(document.querySelectorAll('#chat .msg')).concat([document.getElementById('record')]);
+    items.forEach(function(el){el.classList.add('pending')});
+    items.forEach(function(el,i){
+      timers.push(setTimeout(function(){el.classList.remove('pending')},400+i*900));
+    });
+  });
+
+  // review modes
+  var ranges={
+    std:'本次覆盖 9月18日–9月25日（自上次复盘起）· 前瞻至 10月2日',
+    long:'本次覆盖 8月20日–9月25日（36 天，按长区间压缩）· 前瞻至 10月2日',
+    short:'简版 · 本次覆盖 9月18日–9月25日 · 待处理分拣留到下次，复盘记录注明「简版」'
+  };
+  var b1={std:'按主题标签和「下一步」聚类：利率路径 4 条，其中 1 条与原假设方向相反。',
+          long:'只报主题层面的聚类和数量，每个主题最多点 2 条关键记录。'};
+  var b2={std:'逐条列标题和你的原话，给出建议去向；超过 14 天的单独标出。',
+          long:'按主题分组，给出「整组归档 / 整组放弃」选项；决策仍单独列出。'};
+  document.querySelectorAll('.mode').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var m=btn.dataset.mode;
+      document.querySelectorAll('.mode').forEach(function(b){b.setAttribute('aria-pressed',b===btn)});
+      document.querySelectorAll('#blocks li, #qs li').forEach(function(li){
+        li.classList.toggle('off', li.dataset.in.split(' ').indexOf(m)<0);
+      });
+      document.getElementById('range').textContent=ranges[m];
+      if(b1[m]) document.getElementById('b1').textContent=b1[m];
+      if(b2[m]) document.getElementById('b2').textContent=b2[m];
+    });
+  });
+})();
+</script>
+</body>
+</html>
