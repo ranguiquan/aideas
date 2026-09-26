@@ -312,3 +312,18 @@ button{font:inherit;color:inherit}
 .conn-err p{margin:0}
 .conn-err .mono{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .conn-err code{font:500 12.5px var(--mono);background:var(--sunk);padding:1px 5px;border-radius:4px}
+
+/* ---------- login ---------- */
+.login{min-height:100%;display:grid;place-items:center;padding:24px 16px}
+.login-card{width:min(360px,100%);background:var(--surface);border-radius:14px;box-shadow:var(--shadow);padding:28px 26px 22px;display:grid;gap:10px}
+.login-card .brand{margin-bottom:6px}
+.login-lead{margin:0 0 8px;color:var(--ink-2)}
+.login-card .flabel{margin:0}
+.login-card input{font:inherit;font-size:15px;color:var(--ink);background:var(--raised);border:1px solid var(--line-2);border-radius:8px;padding:10px 12px;width:100%}
+.login-card input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.login-err{margin:0;font-size:13px;color:var(--c-red)}
+.login-btn{appearance:none;border:0;border-radius:8px;background:var(--ink);color:var(--surface);font:500 14px var(--sans);padding:11px 14px;cursor:pointer;margin-top:4px}
+.login-btn:disabled{opacity:.6;cursor:default}
+.login-note{margin:2px 0 0;font-size:12px;color:var(--muted);text-align:center}
+.logout{appearance:none;border:0;background:none;padding:0;color:var(--muted);font-size:12.5px;cursor:pointer;justify-self:start}
+.logout:hover{color:var(--ink)}

@@ -5,6 +5,9 @@
 //   NOTION_TOKEN        Notion internal integration secret (required for live data)
 //   NOTION_INFO_DS      data source id of 信息与灵感库 (optional, has default)
 //   NOTION_PLAN_DS      data source id of 计划与关注 (optional, has default)
+//   AUTH_PASSWORD / AUTH_SECRET   required; see api/_auth.js. Without a valid session this returns 401.
+
+const auth = require("./_auth");
 
 const NOTION_VERSION = "2025-09-03";
 const INFO_DS = process.env.NOTION_INFO_DS || "3e627141-a910-80f6-b4de-000b0e86ddc4";
@@ -106,6 +109,18 @@ function toPlan(p) {
 }
 
 module.exports = async (req, res) => {
+  // private data: never let the CDN or a shared cache keep a copy
+  auth.noStore(res);
+  const cfg = auth.config();
+  if (!cfg.ok) {
+    // fail closed: no auth configured means no data
+    res.status(503).json({ error: cfg.error, auth: "unconfigured" });
+    return;
+  }
+  if (!auth.isAuthenticated(req, cfg)) {
+    res.status(401).json({ error: "login required", auth: "required" });
+    return;
+  }
   const token = (process.env.NOTION_TOKEN || "").trim();
   if (!token) {
     res.status(503).json({ error: "NOTION_TOKEN is not configured" });
@@ -115,7 +130,6 @@ module.exports = async (req, res) => {
     const [info, plan] = await Promise.all([queryAll(INFO_DS, token), queryAll(PLAN_DS, token)]);
     const records = info.map(toRecord).sort((a, b) => b.created.localeCompare(a.created));
     const plans = plan.map(toPlan);
-    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=3600");
     res.status(200).json({ source: "live", generatedAt: new Date().toISOString(), records, plans });
   } catch (err) {
     console.error("[api/data]", err.notionStatus, err.notionCode, err.dataSource, err.message);

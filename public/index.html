@@ -43,6 +43,7 @@
 
     <div class="side-foot">
       <p class="src" id="src"><i></i><span>加载中</span></p>
+      <button class="logout" id="logout" type="button" hidden>退出登录</button>
     </div>
   </aside>
 
@@ -94,6 +95,21 @@
     </section>
     <section class="view" id="v-events" aria-label="主题与事件" hidden></section>
   </main>
+</div>
+
+<div class="login" id="login" hidden>
+  <form class="login-card" id="login-form">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="7.5" fill="none"/><circle cx="12" cy="12" r="11" fill="none" opacity=".45"/></svg>
+      <span>Aideas <b>信息台</b></span>
+    </div>
+    <p class="login-lead">这里的数据只对你本人开放。</p>
+    <label class="flabel" for="login-pw">访问密码</label>
+    <input id="login-pw" name="password" type="password" autocomplete="current-password" required>
+    <p class="login-err" id="login-err" role="alert" hidden></p>
+    <button class="login-btn" id="login-btn" type="submit">登录</button>
+    <p class="login-note">登录后 30 天内免输密码。</p>
+  </form>
 </div>
 
 <aside class="drawer" id="drawer" aria-label="详情" hidden>

@@ -64,6 +64,7 @@
         });
       })
       .catch(function (e) {
+        if (e && e.body && e.body.auth === "required") throw { needLogin: true };
         apiError = e && e.name === "AbortError" ? { status: 0, body: { error: "请求超时（15 秒）" } }
           : e && e.status !== undefined ? e : { status: 0, body: { error: String(e && e.message || e) } };
         return fetch("data/snapshot.json").then(function (r) { if (!r.ok) throw new Error("no snapshot"); return r.json(); });
@@ -72,6 +73,7 @@
 
   function apiErrorHint(e) {
     var b = (e && e.body) || {}, code = b.notionCode, st = e && e.status;
+    if (b.auth === "unconfigured") return "还没有设置访问密码，所以数据接口处于关闭状态。在 Vercel 环境变量中添加 <code>AUTH_PASSWORD</code>（至少 12 位）和 <code>AUTH_SECRET</code>（至少 32 位随机字符），然后 Redeploy。";
     if (st === 404) return "没有找到 <code>/api/data</code> 接口。本地用 <code>npx serve</code> 预览时这是正常的；线上出现说明 <code>api/</code> 目录没有被部署，检查 Vercel 项目的 Root Directory 是否为 <code>./</code>。";
     if (st === 503) return "这次部署读不到 <code>NOTION_TOKEN</code>。检查环境变量是否勾选了当前环境（Preview 部署需要勾 <b>Preview</b>），以及添加变量之后是否 Redeploy 过——已有的部署不会自动拿到新变量。";
     if (code === "unauthorized") return "Notion 拒绝了这个 token（无效或已被重置）。重新复制 integration 的 secret，更新 Vercel 环境变量后 Redeploy。";
@@ -132,8 +134,40 @@
     $("f-reset").hidden = !any;
   }
 
+  // ---------- login ----------
+  function showLogin() {
+    document.querySelector(".app").hidden = true;
+    $("login").hidden = false;
+    $("login-pw").focus();
+  }
+
+  function bindLogin() {
+    $("login-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var btn = $("login-btn"), err = $("login-err"), pw = $("login-pw").value;
+      if (!pw) return;
+      btn.disabled = true; btn.textContent = "验证中…"; err.hidden = true;
+      fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }), credentials: "same-origin" })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, body: j }; }); })
+        .then(function (r) {
+          if (r.status === 200) { location.reload(); return; }
+          err.textContent = r.status === 401 ? "密码不对，再试一次。"
+            : r.body.auth === "unconfigured" ? "服务器还没有设置访问密码（AUTH_PASSWORD / AUTH_SECRET）。"
+            : "登录失败（HTTP " + r.status + "）。";
+          err.hidden = false;
+          $("login-pw").select();
+        })
+        .catch(function () { err.textContent = "网络错误，请稍后再试。"; err.hidden = false; })
+        .then(function () { btn.disabled = false; btn.textContent = "登录"; });
+    });
+    $("logout").addEventListener("click", function () {
+      fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () { location.reload(); }, function () { location.reload(); });
+    });
+  }
+
   function renderSource() {
     var el = $("src"), d = state.data;
+    $("logout").hidden = d.source !== "live";
     el.className = "src " + (d.source === "live" ? "live" : "snap");
     var t = new Date(d.generatedAt);
     var when = fmtDay.format(t) + " " + fmtTime.format(t);
@@ -791,6 +825,7 @@
   }
 
   bind();
+  bindLogin();
   bindTimeFilter();
   bindTimelinePan();
   load().then(function (data) {
@@ -807,7 +842,8 @@
         "<p>可能是 Notion 里有页面还不支持的数据格式。把下面这行错误信息发给开发者即可定位。</p>" +
         '<p class="mono">' + esc(err && (err.stack || err.message) || err).split("\n").slice(0, 3).join(" · ") + "</p></div>";
     }
-  }, function () {
+  }, function (e) {
+    if (e && e.needLogin) { showLogin(); return; }
     var b = (apiError && apiError.body) || {};
     var detail = [apiError && apiError.status ? "HTTP " + apiError.status : "", b.notionCode || "", b.error || ""].filter(Boolean).join(" · ");
     $("src").querySelector("span").textContent = "未连接 Notion";

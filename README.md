@@ -21,7 +21,9 @@ public/
   method.html                     方法论页
   data/snapshot.json              本地快照（已 gitignore，不提交）
 api/
-  data.js                         Vercel Function：实时读取 Notion
+  data.js                         Vercel Function：实时读取 Notion（需要登录）
+  login.js  logout.js             登录 / 退出
+  _auth.js                        密码校验和会话 Cookie 签名
 vercel.json                       Vercel 配置（输出目录 public/，无需构建）
 ```
 
@@ -106,7 +108,7 @@ vercel.json                       Vercel 配置（输出目录 public/，无需�
 
 ### 数据来源
 
-- 线上：`api/data.js` 用 Notion API 实时读取两个数据库，结果缓存 5 分钟。Notion 里新增的记录不需要重新部署。
+- 线上：`api/data.js` 用 Notion API 实时读取两个数据库，每次打开页面都是最新数据，不经过 CDN 缓存。只有登录后才能读取（见下方「访问控制」）。
 - 本地：如果存在 `public/data/snapshot.json`，页面会用它（这个文件在 `.gitignore` 里，不会提交）。
 - 两者都没有时，页面提示「未连接 Notion」。页面左下角会显示当前数据来源：实时 / 快照 / 未连接。
 
@@ -139,12 +141,26 @@ Vercel 的正式地址默认从 `main` 分支部署。推到其他分支会生�
 | `NOTION_TOKEN` | 是 | 上一步复制的 secret |
 | `NOTION_INFO_DS` | 否 | 信息与灵感库的 data source ID，不填用作者的默认值 |
 | `NOTION_PLAN_DS` | 否 | 计划与关注的 data source ID，不填用作者的默认值 |
+| `AUTH_PASSWORD` | 是 | 登录密码，至少 12 位，建议用一句长短语 |
+| `AUTH_SECRET` | 是 | 会话签名密钥，至少 32 位随机字符，用 `openssl rand -base64 32` 生成 |
 
-添加后到 **Deployments**，在最新一次部署右侧点 `···` → **Redeploy**。部署完成后，左下角应显示「实时 · Notion」。
+勾选环境时，Production 和 Preview 都要勾，否则预览部署读不到。添加后到 **Deployments**，在最新一次部署右侧点 `···` → **Redeploy**。部署完成后打开页面，输入 `AUTH_PASSWORD` 登录，左下角应显示「实时 · Notion」。
 
-### 4. 设为仅自己可见（建议）
+### 4. 访问控制
 
-页面会展示真实记录，包括决策的标的和仓位。在 **Settings → Deployment Protection** 打开 **Vercel Authentication**，并确认覆盖 Production。这样只有登录你 Vercel 账号的人能访问。
+数据很私密，页面自带单用户登录：
+
+- 打开页面先显示登录框。密码正确后，服务器发一个 30 天有效的会话 Cookie（HttpOnly、Secure、SameSite=Strict，HMAC-SHA256 签名，无法伪造）。
+- `/api/data` 没有有效会话一律返回 401，页面的 HTML / JS 里不包含任何数据。
+- 没配置 `AUTH_PASSWORD` / `AUTH_SECRET`（或太短）时，数据接口直接拒绝，不会因为漏配而公开。
+- 密码错误时服务器固定延迟 1 秒再回复，拖慢暴力猜测。
+- 数据接口返回 `Cache-Control: private, no-store`，CDN 和中间代理不会留存副本。
+- **让所有设备下线**：修改 `AUTH_PASSWORD` 或 `AUTH_SECRET` 后 Redeploy，所有已有会话立即失效。
+- 侧边栏底部有「退出登录」。
+
+方法论页（`/method`）不经过登录，它只包含使用方法，不含 Notion 数据。
+
+可选：Vercel 的 **Settings → Deployment Protection → Vercel Authentication** 还能再给预览地址加一层 Vercel 账号登录（免费版只覆盖预览地址，正式域名要靠上面的密码登录）。
 
 ### 命令行部署（可选）
 
@@ -159,9 +175,10 @@ npx vercel --prod                 # 发布正式地址
 
 ### 常见问题
 
-- **左下角显示「未连接 Notion」**：检查 `NOTION_TOKEN` 是否配置，两个数据库是否都在 Connections 里加了 integration，改完环境变量后是否 Redeploy。
+- **左下角显示「未连接 Notion」**：页面会显示具体原因。常见的是 `NOTION_TOKEN` 没勾选当前环境、两个数据库没在 Connections 里加 integration、或改完环境变量后没有 Redeploy。
+- **提示「还没有设置访问密码」**：添加 `AUTH_PASSWORD` 和 `AUTH_SECRET` 后 Redeploy。
+- **登录后又回到登录框**：Cookie 被浏览器拦截了，确认是通过 `https://` 访问的。
 - **页面是空的 / 404**：确认 Framework Preset 是 `Other`，并且部署的分支里有 `public/` 目录。
-- **数据不是最新的**：接口缓存 5 分钟，稍等或强制刷新。
 
 ---
 
@@ -171,4 +188,4 @@ npx vercel --prod                 # 发布正式地址
 npx serve public
 ```
 
-打开终端里显示的地址。没有 `public/data/snapshot.json` 时，页面显示「未连接 Notion」。本地的 `/api/data` 不会运行；要在本地连 Notion，用 `npx vercel dev`，并在 `.env.local` 里写入 `NOTION_TOKEN`。
+打开终端里显示的地址。没有 `public/data/snapshot.json` 时，页面显示「未连接 Notion」。本地的 `/api/data` 不会运行；要在本地连 Notion 并测试登录，用 `npx vercel dev`，并在 `.env.local` 里写入 `NOTION_TOKEN`、`AUTH_PASSWORD`、`AUTH_SECRET`（这个文件已被 gitignore）。
