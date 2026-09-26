@@ -348,6 +348,7 @@
     svg.call(zoom);
     if (state.zoom) svg.call(zoom.transform, state.zoom);
 
+    var rings = root.append("g").attr("class", "g-rings");   // guide circles in focus mode
     var link = root.append("g").selectAll("path").data(g.links).join("path")
       .attr("class", function (d) { return "g-link " + d.kind; })
       .attr("marker-end", function (d) { return d.kind === "derive" ? "url(#arr)" : null; });
@@ -360,19 +361,32 @@
       .on("mouseenter", function (e, d) { highlight(d); })
       .on("mouseleave", function () { highlight(null); })
       .call(d3.drag()
-        .on("start", function (e, d) { if (!e.active) sim.alphaTarget(0.25).restart(); d.fx = d.x; d.fy = d.y; })
-        .on("drag", function (e, d) { d.fx = e.x; d.fy = e.y; })
-        .on("end", function (e, d) { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
+        .on("start", function (e, d) {
+          d._sx = e.x; d._sy = e.y; d._moved = false;
+          if (!e.active) sim.alphaTarget(0.25).restart();
+          d.fx = d.x; d.fy = d.y;
+        })
+        .on("drag", function (e, d) {
+          // a real drag (not a click) makes this node the centre of the layout
+          if (!d._moved && Math.hypot(e.x - d._sx, e.y - d._sy) > 4) { d._moved = true; focusOn(d); }
+          d.fx = e.x; d.fy = e.y;
+          if (d._moved) moveFocus(e.x, e.y);
+        })
+        .on("end", function (e, d) {
+          if (!e.active) sim.alphaTarget(0);
+          if (d._moved) glideToCenter(d);
+          else if (d.id !== state.focusId) { d.fx = null; d.fy = null; }
+        }));
 
     node.each(function (d) {
       var s = d3.select(this), r = nodeR(d);
       if (d.kind === "event") {
-        s.append("rect").attr("x", -r).attr("y", -r).attr("width", r * 2).attr("height", r * 2).attr("rx", 2).attr("transform", "rotate(45)").style("fill", d.color);
+        s.append("rect").attr("class", "shape").attr("x", -r).attr("y", -r).attr("width", r * 2).attr("height", r * 2).attr("rx", 2).attr("transform", "rotate(45)").style("fill", d.color);
       } else if (d.kind === "tag") {
-        s.append("circle").attr("r", r).style("fill", "var(--surface)").style("stroke", d.color).style("stroke-width", 2);
+        s.append("circle").attr("class", "shape").attr("r", r).style("fill", "var(--surface)").style("stroke", d.color).style("stroke-width", 2);
       } else if (d.kind === "theme") {
         s.append("circle").attr("r", r + 5).style("fill", "none").style("stroke", d.color).style("stroke-width", 1.5).style("opacity", 0.45);
-        s.append("circle").attr("r", r).style("fill", d.color);
+        s.append("circle").attr("class", "shape").attr("r", r).style("fill", d.color);
         if (d.hiddenEvents) {   // events folded into the theme: show how many
           var bx = -r * 0.72, by = -r * 0.72;
           s.append("circle").attr("cx", bx).attr("cy", by).attr("r", 7.5).style("fill", "var(--c-blue)").style("stroke", "var(--surface)").style("stroke-width", 2);
@@ -380,7 +394,7 @@
           s.append("title").text(d.hiddenEvents + " 个检验事件已收起（打开「显示全部事件」可展开）");
         }
       } else {
-        s.append("circle").attr("r", r).style("fill", d.color).style("stroke", "var(--surface)").style("stroke-width", 2);
+        s.append("circle").attr("class", "shape").attr("r", r).style("fill", d.color).style("stroke", "var(--surface)").style("stroke-width", 2);
         if (d.kind === "record" && d.ref.status === "待处理") s.append("circle").attr("r", 3).attr("cx", r * 0.75).attr("cy", -r * 0.75).style("fill", "var(--c-red)").style("stroke", "var(--surface)").style("stroke-width", 1.5);
       }
       s.append("text").attr("x", r + 7).attr("y", 4).text(d.kind === "tag" ? d.label : trunc(d.label, 13));
@@ -392,6 +406,77 @@
       node.classed("dim", function (n) { return d && n.id !== d.id && !adj[d.id + "|" + n.id]; });
       link.classed("dim", function (l) { return d && l.source.id !== d.id && l.target.id !== d.id; });
     }
+
+    // ----- focus mode: radial layout by hop distance from one node -----
+    var nbrs = {};
+    g.links.forEach(function (l) {
+      var s = l.source.id || l.source, t = l.target.id || l.target;
+      (nbrs[s] = nbrs[s] || []).push(t); (nbrs[t] = nbrs[t] || []).push(s);
+    });
+    function hopsFrom(id) {
+      var dist = {}, q = [id];
+      dist[id] = 0;
+      while (q.length) {
+        var c = q.shift();
+        (nbrs[c] || []).forEach(function (n) { if (dist[n] === undefined) { dist[n] = dist[c] + 1; q.push(n); } });
+      }
+      return dist;
+    }
+    // radius per hop: 0 (centre), 1, 2, 3+, scaled to the canvas; unreachable nodes sit on the outermost ring
+    var maxR = Math.max(160, Math.min(W, H) / 2 - 36);
+    var RINGS = [0, maxR * 0.32, maxR * 0.58, maxR * 0.82], OUTER = maxR;
+    function ringOf(n) { return n._hop === undefined ? OUTER : RINGS[Math.min(n._hop, 3)]; }
+    function viewCenter() { return state.zoom ? state.zoom.invert([W / 2, H / 2]) : [W / 2, H / 2]; }
+    function drawRings(cx, cy) {
+      rings.selectAll("circle").data(RINGS.slice(1)).join("circle").attr("cx", cx).attr("cy", cy).attr("r", function (r) { return r; });
+    }
+    function applyFocus(d, cx, cy) {
+      var dist = hopsFrom(d.id);
+      g.nodes.forEach(function (n) { n._hop = dist[n.id]; });
+      sim.force("x", null).force("y", null)
+        .force("radial", d3.forceRadial(ringOf, cx, cy).strength(function (n) { return n.id === d.id ? 0 : n._hop === undefined ? 0.25 : 0.8; }));
+      sim.force("link").strength(0.08);   // let the rings, not the links, decide the shape
+      node.classed("focus", function (n) { return n.id === d.id; })
+        .attr("data-hop", function (n) { return n._hop === undefined ? "far" : Math.min(n._hop, 3); });
+      link.classed("far", function (l) { var a = l.source._hop, b = l.target._hop; return a === undefined || b === undefined || Math.max(a, b) >= 3; });
+      drawRings(cx, cy);
+      $("g-reset").hidden = false;
+    }
+    function focusOn(d) {
+      if (state.focusId && state.focusId !== d.id) {   // release the previous centre
+        var prev = g.nodes.find(function (n) { return n.id === state.focusId; });
+        if (prev) { prev.fx = null; prev.fy = null; }
+      }
+      state.focusId = d.id;
+      applyFocus(d, d.x, d.y);
+      sim.alpha(0.7).restart();
+    }
+    function moveFocus(x, y) {
+      var r = sim.force("radial");
+      if (r) { r.x(x).y(y); }
+      drawRings(x, y);
+    }
+    function glideToCenter(d) {
+      var c = viewCenter(), fx = d.fx, fy = d.fy, dur = 550;
+      var t = d3.timer(function (el) {
+        var k = Math.min(1, el / dur), e = d3.easeCubicInOut(k);
+        d.fx = fx + (c[0] - fx) * e; d.fy = fy + (c[1] - fy) * e;
+        moveFocus(d.fx, d.fy);
+        if (sim.alpha() < 0.3) sim.alpha(0.3).restart();
+        if (k >= 1) t.stop();
+      });
+    }
+    state.resetFocus = function () {
+      state.focusId = null;
+      g.nodes.forEach(function (n) { n.fx = null; n.fy = null; n._hop = undefined; });
+      sim.force("radial", null).force("x", d3.forceX(W / 2).strength(0.035)).force("y", d3.forceY(H / 2).strength(0.07));
+      sim.force("link").strength(function (l) { return l.kind === "tag" ? 0.25 : 0.7; });
+      node.classed("focus", false).attr("data-hop", null);
+      link.classed("far", false);
+      rings.selectAll("circle").remove();
+      $("g-reset").hidden = true;
+      sim.alpha(0.8).restart();
+    };
 
     sim = d3.forceSimulation(g.nodes)
       .alpha(g.seeded && g.seeded >= g.nodes.length / 2 ? 0.35 : 1)
@@ -409,7 +494,11 @@
         node.attr("transform", function (d) { return "translate(" + d.x + "," + d.y + ")"; });
       })
       .on("tick.pos", function () { g.nodes.forEach(function (n) { state.pos[n.id] = { x: n.x, y: n.y }; }); });
-    d3.select(box).append("p").attr("class", "g-hint").text("拖动节点 · 滚轮缩放 · 点击查看详情 · 点击标签筛选");
+    // keep the chosen centre across re-renders (filters, resize)
+    var fd = state.focusId && g.nodes.find(function (n) { return n.id === state.focusId; });
+    if (fd) { var c0 = viewCenter(); fd.fx = c0[0]; fd.fy = c0[1]; applyFocus(fd, c0[0], c0[1]); }
+    else { state.focusId = null; $("g-reset").hidden = true; }
+    d3.select(box).append("p").attr("class", "g-hint").text("拖动任一节点，以它为中心重新排版 · 滚轮缩放 · 点击查看详情");
   }
 
   // ---------- time range filter (graph) ----------
@@ -852,6 +941,7 @@
     $("q").addEventListener("input", function (e) { state.q = e.target.value; rerender(); });
     $("g-tags").addEventListener("change", renderGraph);
     $("g-events").addEventListener("change", renderGraph);
+    $("g-reset").addEventListener("click", function () { if (state.resetFocus) state.resetFocus(); });
     document.addEventListener("click", function (e) {
       var el = e.target.closest("[data-id]");
       if (el && !el.closest(".g-node")) openDetail(el.dataset.id);
