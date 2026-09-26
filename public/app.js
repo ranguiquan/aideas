@@ -315,32 +315,41 @@
   function renderTimeFilter() {
     var dom = timeDomain(), n = dom.n, r = state.range;
     var lo = r.from ? idxOf(r.from, dom) : 0, hi = r.to ? idxOf(r.to, dom) : n;
-    var loEl = $("tf-lo"), hiEl = $("tf-hi");
-    [loEl, hiEl].forEach(function (el) { el.max = n; el.disabled = n === 0; });
-    loEl.value = lo; hiEl.value = hi;
+    // Each day is one bin; the thumbs sit on bin edges: start-of-day `lo` and end-of-day `hi`.
+    var bins = n + 1, loEl = $("tf-lo"), hiEl = $("tf-hi");
+    [loEl, hiEl].forEach(function (el) { el.max = bins; el.disabled = n === 0; });
+    loEl.value = lo; hiEl.value = hi + 1;
     loEl.style.zIndex = lo >= n ? 3 : 2;   // keep the start thumb grabbable when both sit at the right end
-    var pct = function (i) { return n ? i / n * 100 : 50; };
-    $("tf-fill").style.left = (n ? pct(lo) : 0) + "%";
-    $("tf-fill").style.right = (n ? 100 - pct(hi) : 0) + "%";
+    var edge = function (b) { return b / bins * 100; };
+    $("tf-fill").style.left = edge(lo) + "%";
+    $("tf-fill").style.right = 100 - edge(hi + 1) + "%";
     var from = addDays(dom.min, lo), to = addDays(dom.min, hi);
     ["tf-from", "tf-to"].forEach(function (id) { $(id).min = dom.min; $(id).max = dom.max; });
     $("tf-from").value = from; $("tf-to").value = to;
 
-    // per-day record counts (respecting the sidebar filters)
-    var recs = filtered(), counts = [], peak = 1;
+    // per-day record counts (respecting the sidebar filters), drawn in the separate 每日入库 chart
+    var counts = [], peak = 0;
     for (var i = 0; i <= n; i++) counts.push(0);
-    recs.forEach(function (x) { var k = idxOf(sgDay(x.created), dom); counts[k]++; });
+    filtered().forEach(function (x) { counts[idxOf(sgDay(x.created), dom)]++; });
     counts.forEach(function (c) { peak = Math.max(peak, c); });
-    var w = Math.max(3, Math.min(22, 70 / (n + 1)));
-    $("tf-hist").innerHTML = counts.map(function (c, i) {
-      var title = addDays(dom.min, i) + " · " + c + " 条";
-      return '<i class="' + (i >= lo && i <= hi ? "on" : "") + '" title="' + title + '" style="left:' + pct(i) + "%;width:" + (n ? w + "%" : "18px") + ";height:" + (c ? Math.max(12, c / peak * 100) : 7) + '%"></i>';
+    $("daily-bars").innerHTML = counts.map(function (c, i) {
+      var k = addDays(dom.min, i);
+      return '<button type="button" class="' + (i >= lo && i <= hi ? "on" : "") + '" data-day="' + i + '" title="' + md(k) + " · " + c + ' 条，点击只看这一天" aria-label="' + md(k) + " " + c + ' 条">' +
+        '<i style="height:' + (c ? Math.max(10, c / (peak || 1) * 100) : 0) + '%"></i></button>';
+    }).join("");
+    $("daily-max").textContent = peak ? "单日最多 " + peak + " 条" : "暂无记录";
+    // one label slot per bar so labels line up; label every day when few, else just the ends
+    $("daily-x").className = "daily-x" + (bins <= 8 ? "" : " ends");
+    $("daily-x").innerHTML = counts.map(function (_, i) {
+      var show = bins <= 8 || i === 0 || i === n;
+      return "<span>" + (show ? mdShort(addDays(dom.min, i)) : "") + "</span>";
     }).join("");
 
-    var ticks = [dom.min];
-    if (n >= 6) ticks.push(addDays(dom.min, Math.round(n / 2)));
-    if (n > 0) ticks.push(dom.max);
-    $("tf-ticks").innerHTML = ticks.map(function (k) { return '<span style="left:' + pct(idxOf(k, dom)) + '%">' + mdShort(k) + "</span>"; }).join("");
+    // label every day when there are few, otherwise first / middle / last
+    var tickIdx = bins <= 8 ? counts.map(function (_, i) { return i; }) : [0, Math.round(n / 2), n];
+    $("tf-ticks").innerHTML = tickIdx.map(function (i) {
+      return '<span style="left:' + edge(i + 0.5) + '%">' + mdShort(addDays(dom.min, i)) + "</span>";
+    }).join("");
 
     var inCount = counts.slice(lo, hi + 1).reduce(function (a, b) { return a + b; }, 0);
     $("tf-sum").textContent = (lo === hi ? md(from) : md(from) + " – " + md(to)) + " · " + inCount + " 条记录";
@@ -368,18 +377,17 @@
 
   function bindTimeFilter() {
     var loEl = $("tf-lo"), hiEl = $("tf-hi");
+    // slider values are bin edges; a range always covers at least one whole day
     loEl.addEventListener("input", function () {
-      var lo = +loEl.value, hi = +hiEl.value;
-      if (lo > hi) lo = hi;                       // the start can't pass the end
-      setRange(lo, hi);
+      var loEdge = Math.min(+loEl.value, +hiEl.value - 1);
+      setRange(loEdge, +hiEl.value - 1);
     });
     hiEl.addEventListener("input", function () {
-      var lo = +loEl.value, hi = +hiEl.value;
-      if (hi < lo) hi = lo;
-      setRange(lo, hi);
+      var hiEdge = Math.max(+hiEl.value, +loEl.value + 1);
+      setRange(+loEl.value, hiEdge - 1);
     });
     $("tf-from").addEventListener("change", function (e) {
-      var dom = timeDomain(), hi = +hiEl.value;
+      var dom = timeDomain(), hi = +hiEl.value - 1;
       var lo = e.target.value ? idxOf(e.target.value, dom) : 0;
       setRange(lo, Math.max(lo, hi));            // pushing the start past the end drags the end along
     });
@@ -387,6 +395,10 @@
       var dom = timeDomain(), lo = +loEl.value;
       var hi = e.target.value ? idxOf(e.target.value, dom) : dom.n;
       setRange(Math.min(lo, hi), hi);
+    });
+    $("daily-bars").addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-day]");
+      if (b) setRange(+b.dataset.day, +b.dataset.day);
     });
     $("tf-all").addEventListener("click", function () { state.range.from = state.range.to = null; renderTimeFilter(); scheduleGraph(); });
   }

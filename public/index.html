@@ -57,6 +57,7 @@
 
     <section class="view" id="v-feed" aria-label="信息流"></section>
     <section class="view" id="v-graph" aria-label="知识图谱" hidden>
+      <div class="tf-wrap">
       <div class="timef" id="timef" role="group" aria-labelledby="tf-label">
         <div class="timef-head">
           <span class="flabel" id="tf-label">入库时间</span>
@@ -66,7 +67,6 @@
         <div class="timef-row">
           <input type="date" id="tf-from" aria-label="开始日期">
           <div class="dual">
-            <div class="hist" id="tf-hist" aria-hidden="true"></div>
             <div class="track"><div class="fill" id="tf-fill"></div></div>
             <input type="range" id="tf-lo" min="0" max="0" step="1" value="0" aria-label="开始日期">
             <input type="range" id="tf-hi" min="0" max="0" step="1" value="0" aria-label="结束日期">
@@ -74,6 +74,12 @@
           </div>
           <input type="date" id="tf-to" aria-label="结束日期">
         </div>
+      </div>
+      <div class="daily" aria-labelledby="daily-label">
+        <div class="daily-h"><span class="flabel" id="daily-label">每日入库</span><span class="daily-max" id="daily-max"></span></div>
+        <div class="daily-bars" id="daily-bars"></div>
+        <div class="daily-x" id="daily-x"></div>
+      </div>
       </div>
       <div class="graph-bar">
         <div class="legend" id="g-legend"></div>
