@@ -164,7 +164,7 @@ button{font:inherit;color:inherit}
 .cal-scroll{overflow-x:auto;scrollbar-width:thin;padding-bottom:4px}
 .cal{display:grid;grid-template-rows:12px repeat(7,11px);grid-template-columns:20px;grid-auto-columns:11px;gap:3px;width:max-content;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:pan-x pan-y}
 .cal .m{grid-row:1;font:500 10px/12px var(--mono);color:var(--muted);white-space:nowrap}
-.cal .wd{grid-column:1;position:sticky;left:0;z-index:1;background:var(--surface);font:500 10px/11px var(--sans);color:var(--muted);padding-right:6px;margin-right:-3px}
+.cal .wd{grid-column:1;position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:3px 0 0 var(--surface);font:500 10px/11px var(--sans);color:var(--muted);padding-right:6px}
 .c{display:block;width:11px;height:11px;border-radius:2.5px;background:var(--line);cursor:crosshair}
 .c.l1{background:color-mix(in srgb,var(--accent) 30%,var(--line))}
 .c.l2{background:color-mix(in srgb,var(--accent) 52%,var(--line))}

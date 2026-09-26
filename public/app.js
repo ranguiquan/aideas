@@ -400,7 +400,6 @@
           var bx = -r * 0.72, by = -r * 0.72;
           s.append("circle").attr("cx", bx).attr("cy", by).attr("r", 7.5).style("fill", "var(--c-blue)").style("stroke", "var(--surface)").style("stroke-width", 2);
           s.append("text").attr("class", "badge").attr("x", bx).attr("y", by + 3.5).attr("text-anchor", "middle").text(d.hiddenEvents);
-          s.append("title").text(d.hiddenEvents + " 个检验事件已收起（打开「显示全部事件」可展开）");
         }
       } else {
         s.append("circle").attr("class", "shape").attr("r", r).style("fill", d.color).style("stroke", "var(--surface)").style("stroke-width", 2);
@@ -658,7 +657,9 @@
         }
       }
     }
-    ["一", "", "三", "", "五", "", ""].forEach(function (t, d) { if (t) html.push('<span class="wd" style="grid-row:' + (d + 2) + '">' + t + "</span>"); });
+    // a solid sticky column (corner + all 7 rows) so cells scrolling underneath never show through
+    html.push('<span class="wd" style="grid-row:1"></span>');
+    ["一", "", "三", "", "五", "", ""].forEach(function (t, d) { html.push('<span class="wd" style="grid-row:' + (d + 2) + '">' + t + "</span>"); });
     for (var i = 0; i < days; i++) {
       html.push('<i class="c" data-k="' + addDays(start, i) + '" style="grid-column:' + (Math.floor(i / 7) + 2) + ";grid-row:" + (i % 7 + 2) + '"></i>');
     }
