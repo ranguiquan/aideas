@@ -154,6 +154,10 @@
     $("login-pw").focus();
   }
 
+  function bindSource() {
+    $("src").addEventListener("click", function () { location.reload(); });
+  }
+
   function bindLogin() {
     $("login-form").addEventListener("submit", function (e) {
       e.preventDefault();
@@ -178,13 +182,25 @@
     });
   }
 
+  function ago(t) {
+    var s = (Date.now() - t) / 1000;
+    if (s < 60) return "刚刚";
+    if (s < 3600) return Math.floor(s / 60) + " 分钟前";
+    if (s < 86400) return Math.floor(s / 3600) + " 小时前";
+    return Math.floor(s / 86400) + " 天前";
+  }
+
+  // status pill: "实时 · 3 分钟前" for live data, "快照 · 9月25日" for a local snapshot; click to reload
+  var srcTimer = 0;
   function renderSource() {
-    var el = $("src"), d = state.data;
-    $("logout").hidden = d.source !== "live";
-    el.className = "src " + (d.source === "live" ? "live" : "snap");
-    var t = new Date(d.generatedAt);
-    var when = fmtDay.format(t) + " " + fmtTime.format(t);
-    el.querySelector("span").textContent = (d.source === "live" ? "实时 · Notion · " : "快照 · ") + when;
+    var el = $("src"), d = state.data, live = d.source === "live", t = new Date(d.generatedAt);
+    $("logout").hidden = !live;
+    el.className = "src " + (live ? "live" : "snap");
+    el.title = (live ? "Notion 实时数据" : "本地快照") + "，读取于 " + fmtDay.format(t) + " " + fmtTime.format(t) + "（新加坡时间）· 点击刷新";
+    function paint() { el.querySelector("span").textContent = live ? "实时 · " + ago(t) : "快照 · " + md(sgDay(d.generatedAt)); }
+    paint();
+    clearInterval(srcTimer);
+    if (live) srcTimer = setInterval(paint, 30000);
   }
 
   // ---------- KPIs ----------
@@ -400,7 +416,6 @@
           var bx = -r * 0.72, by = -r * 0.72;
           s.append("circle").attr("cx", bx).attr("cy", by).attr("r", 7.5).style("fill", "var(--c-blue)").style("stroke", "var(--surface)").style("stroke-width", 2);
           s.append("text").attr("class", "badge").attr("x", bx).attr("y", by + 3.5).attr("text-anchor", "middle").text(d.hiddenEvents);
-          s.append("title").text(d.hiddenEvents + " 个检验事件已收起（打开「显示全部事件」可展开）");
         }
       } else {
         s.append("circle").attr("class", "shape").attr("r", r).style("fill", d.color).style("stroke", "var(--surface)").style("stroke-width", 2);
@@ -658,7 +673,9 @@
         }
       }
     }
-    ["一", "", "三", "", "五", "", ""].forEach(function (t, d) { if (t) html.push('<span class="wd" style="grid-row:' + (d + 2) + '">' + t + "</span>"); });
+    // a solid sticky column (corner + all 7 rows) so cells scrolling underneath never show through
+    html.push('<span class="wd" style="grid-row:1"></span>');
+    ["一", "", "三", "", "五", "", ""].forEach(function (t, d) { html.push('<span class="wd" style="grid-row:' + (d + 2) + '">' + t + "</span>"); });
     for (var i = 0; i < days; i++) {
       html.push('<i class="c" data-k="' + addDays(start, i) + '" style="grid-column:' + (Math.floor(i / 7) + 2) + ";grid-row:" + (i % 7 + 2) + '"></i>');
     }
@@ -1050,6 +1067,7 @@
   }
 
   bind();
+  bindSource();
   bindLogin();
   bindTimeFilter();
   bindTimelinePan();
@@ -1071,7 +1089,8 @@
     if (e && e.needLogin) { showLogin(); return; }
     var b = (apiError && apiError.body) || {};
     var detail = [apiError && apiError.status ? "HTTP " + apiError.status : "", b.notionCode || "", b.error || ""].filter(Boolean).join(" · ");
-    $("src").querySelector("span").textContent = "未连接 Notion";
+    $("src").querySelector("span").textContent = "未连接";
+    $("src").title = "没有连上 Notion · 点击重试";
     $("v-feed").innerHTML = '<div class="empty conn-err"><p><b>没有连上 Notion。</b></p>' +
       "<p>" + apiErrorHint(apiError) + "</p>" +
       (detail ? '<p class="mono">' + esc(detail) + "</p>" : "") + "</div>";
