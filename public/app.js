@@ -407,16 +407,33 @@
       cal.querySelectorAll(".c").forEach(function (el) { var k = el.dataset.k; el.classList.toggle("pv", k >= lo && k <= hi); });
       $("daily-max").textContent = lo === hi ? md(lo) : md(lo) + " – " + md(hi);
     }
+    // Mouse: drag selects right away. Touch/pen: a swipe scrolls the calendar;
+    // press and hold (~350ms) to start selecting, a quick tap selects that day.
+    var HOLD_MS = 350, pending = null;
+    function startDrag(k, pointerId) {
+      drag = { a: k, b: k };
+      cal.classList.add("dragging");
+      try { cal.setPointerCapture(pointerId); } catch (err) { /* pointer already released */ }
+      preview(k, k);
+    }
+    function clearPending() { if (pending) { clearTimeout(pending.timer); pending = null; } }
     cal.addEventListener("pointerdown", function (e) {
       var c = e.target.closest(".c");
       if (!c || e.button > 0) return;
-      e.preventDefault();
-      drag = { a: c.dataset.k, b: c.dataset.k, x: e.clientX };
-      cal.classList.add("dragging");
-      cal.setPointerCapture(e.pointerId);
-      preview(drag.a, drag.b);
+      if (e.pointerType === "mouse") { e.preventDefault(); startDrag(c.dataset.k, e.pointerId); return; }
+      clearPending();
+      pending = { k: c.dataset.k, x: e.clientX, y: e.clientY, id: e.pointerId, t: Date.now() };
+      pending.timer = setTimeout(function () {
+        var p = pending; pending = null;
+        if (navigator.vibrate) { try { navigator.vibrate(12); } catch (err) { /* not allowed */ } }
+        startDrag(p.k, p.id);
+      }, HOLD_MS);
     });
+    // once a touch selection is active, keep the browser from scrolling
+    cal.addEventListener("touchmove", function (e) { if (drag) e.preventDefault(); }, { passive: false });
+    cal.addEventListener("contextmenu", function (e) { if (drag || pending) e.preventDefault(); });
     cal.addEventListener("pointermove", function (e) {
+      if (pending && Math.hypot(e.clientX - pending.x, e.clientY - pending.y) > 8) clearPending();   // it's a swipe
       if (!drag) return;
       // nudge the scroll when dragging near either edge of the card
       var r = sc.getBoundingClientRect();
@@ -437,8 +454,14 @@
       else { if (a < dom.min) a = dom.min; if (b > dom.max) b = dom.max; }
       setRange(idxOf(a, dom), idxOf(b, dom));
     }
-    cal.addEventListener("pointerup", finish);
-    cal.addEventListener("pointercancel", finish);
+    cal.addEventListener("pointerup", function () {
+      if (pending) {   // quick tap without moving: select that single day
+        var k = pending.k; clearPending();
+        drag = { a: k, b: k };
+      }
+      finish();
+    });
+    cal.addEventListener("pointercancel", function () { clearPending(); finish(); });
     // vertical wheel scrolls the calendar sideways
     sc.addEventListener("wheel", function (e) {
       if (sc.scrollWidth > sc.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { sc.scrollLeft += e.deltaY; e.preventDefault(); }
