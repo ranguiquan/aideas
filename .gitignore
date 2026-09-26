@@ -2,3 +2,5 @@ public/data/snapshot.json
 node_modules/
 .vercel/
 .env*.local
+.env
+.claude/settings.local.json

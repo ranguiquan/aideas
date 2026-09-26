@@ -108,7 +108,15 @@ function toPlan(p) {
   };
 }
 
-module.exports = async (req, res) => {
+// Read both data sources and return { records, plans } (used by the handler and scripts/snapshot.js)
+async function loadAll(token) {
+  const [info, plan] = await Promise.all([queryAll(INFO_DS, token), queryAll(PLAN_DS, token)]);
+  const records = info.map(toRecord).sort((a, b) => b.created.localeCompare(a.created));
+  const plans = plan.map(toPlan);
+  return { records, plans };
+}
+
+async function handler(req, res) {
   // private data: never let the CDN or a shared cache keep a copy
   auth.noStore(res);
   const cfg = auth.config();
@@ -127,9 +135,7 @@ module.exports = async (req, res) => {
     return;
   }
   try {
-    const [info, plan] = await Promise.all([queryAll(INFO_DS, token), queryAll(PLAN_DS, token)]);
-    const records = info.map(toRecord).sort((a, b) => b.created.localeCompare(a.created));
-    const plans = plan.map(toPlan);
+    const { records, plans } = await loadAll(token);
     res.status(200).json({ source: "live", generatedAt: new Date().toISOString(), records, plans });
   } catch (err) {
     console.error("[api/data]", err.notionStatus, err.notionCode, err.dataSource, err.message);
@@ -140,4 +146,9 @@ module.exports = async (req, res) => {
       dataSource: err.dataSource || null,
     });
   }
-};
+}
+
+module.exports = handler;
+module.exports.loadAll = loadAll;
+module.exports.toRecord = toRecord;
+module.exports.toPlan = toPlan;
