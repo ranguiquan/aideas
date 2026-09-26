@@ -531,7 +531,7 @@
     var th = themes(), ev = events().slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
     $("n-events").textContent = th.length + ev.length;
     var html = '<div class="ev-grid">';
-    html += '<div><p class="sec-t">时间轴 <em>今天 → ' + (ev.length ? md(ev[ev.length - 1].dateEnd || ev[ev.length - 1].date) : "") + "</em></p>" + timeline() + "</div>";
+    html += '<div><p class="sec-t">时间轴 <em>今天 → ' + (ev.length ? md(ev[ev.length - 1].dateEnd || ev[ev.length - 1].date) : "") + "</em><span class=\"tl-hint\" id=\"tl-hint\" hidden>左右拖动查看</span></p><div class=\"tl-wrap\" id=\"tl\"></div></div>";
     html += "<div><p class=\"sec-t\">追踪主题 <em>" + th.length + "</em></p>" + th.map(themeCard).join("") + "</div>";
     html += '<div><p class="sec-t">日程事件 <em>' + ev.length + '</em></p><div class="ev-list">' + ev.map(evRow).join("") + "</div></div>";
     var reviews = state.data.plans.filter(function (p) { return p.kind === "复盘"; });
@@ -541,6 +541,42 @@
       }).join("") + "</div></div>";
     }
     $("v-events").innerHTML = html + "</div>";
+    renderTimeline();
+  }
+
+  // The timeline is drawn 1:1 in pixels (≥ 7px per day) so text never gets scaled down;
+  // when it's wider than the card it scrolls sideways (finger swipe, or mouse drag).
+  function renderTimeline() {
+    var el = $("tl");
+    if (!el || !el.clientWidth) return;              // hidden view: render when shown
+    var cs = getComputedStyle(el);
+    var avail = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    el.innerHTML = timeline(avail);
+    var svg = el.querySelector("svg");
+    $("tl-hint").hidden = el.scrollWidth <= el.clientWidth + 1;
+    if (svg) el.scrollLeft = Math.max(0, +svg.getAttribute("data-today-x") - 48);
+  }
+
+  function bindTimelinePan() {
+    var pan = null, el = function () { return $("tl"); };
+    document.addEventListener("pointerdown", function (e) {
+      var t = el();
+      if (e.pointerType !== "mouse" || e.button > 0 || !t || !t.contains(e.target) || t.scrollWidth <= t.clientWidth) return;
+      pan = { x: e.clientX, sl: t.scrollLeft, moved: false };
+    });
+    document.addEventListener("pointermove", function (e) {
+      if (!pan) return;
+      var dx = e.clientX - pan.x, t = el();
+      if (!pan.moved && Math.abs(dx) > 4) { pan.moved = true; t.classList.add("panning"); }
+      if (pan.moved) t.scrollLeft = pan.sl - dx;
+    });
+    document.addEventListener("pointerup", function () {
+      if (!pan) return;
+      var moved = pan.moved; pan = null;
+      if (el()) el().classList.remove("panning");
+      // a drag shouldn't also count as a click on an item
+      if (moved) document.addEventListener("click", function stop(ev) { ev.stopPropagation(); ev.preventDefault(); document.removeEventListener("click", stop, true); }, true);
+    });
   }
 
   function themeCard(t) {
@@ -570,7 +606,7 @@
       '<div class="ev-flags">' + flags.join("") + pill(e.status) + (e.status === "待发生" ? '<span class="cd">' + rel(e.date) + "</span>" : "") + "</div></div>";
   }
 
-  function timeline() {
+  function timeline(avail) {
     var items = [];
     themes().forEach(function (t) { if (t.date) items.push({ id: t.id, date: t.date, end: null, name: "复查 · " + t.name, color: "var(--c-purple)", shape: "circle" }); });
     state.data.records.forEach(function (r) { if (r.type === "决策" && r.reviewDate) items.push({ id: r.id, date: r.reviewDate, end: null, name: "决策回看 · " + r.title, color: "var(--t-decision)", shape: "circle" }); });
@@ -583,9 +619,10 @@
     var all = items.reduce(function (acc, i) { acc.push(i.date); if (i.end) acc.push(i.end); if (i.rem) acc.push(i.rem[0], i.rem[1]); return acc; }, [today]);
     var minD = dayNum(all.reduce(function (a, b) { return a < b ? a : b; })) - 4;
     var maxD = dayNum(all.reduce(function (a, b) { return a > b ? a : b; })) + 6;
-    var W = 1000, L = 20, R = 20, top = 34, row = 36, H = top + items.length * row + 14;
+    var L = 20, R = 20, top = 34, row = 36, H = top + items.length * row + 14;
+    var W = Math.max(Math.floor(avail || 1000), Math.round((maxD - minD) * 7) + L + R);
     var x = function (key) { return L + (dayNum(key) - minD) / (maxD - minD) * (W - L - R); };
-    var s = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="主题复查、决策回看与日程事件的时间轴">';
+    var s = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + " " + H + '" data-today-x="' + Math.round(x(todayKey())) + '" role="img" aria-label="主题复查、决策回看与日程事件的时间轴">';
     // month ticks
     var d0 = new Date(minD * DAY), m = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1));
     while (m.getTime() / DAY <= maxD) {
@@ -597,8 +634,9 @@
     var tx = x(today);
     s += '<g class="tl-today"><line x1="' + tx + '" x2="' + tx + '" y1="' + (top - 16) + '" y2="' + (H - 6) + '"/><text x="' + (tx + 5) + '" y="' + (top - 6) + '">今天</text></g>';
     items.forEach(function (it, i) {
-      var y = top + i * row + row / 2, cx = x(it.date), right = cx < W * 0.62;
+      var y = top + i * row + row / 2, cx = x(it.date);
       s += '<g class="tl-item" data-id="' + it.id + '" tabindex="0">';
+      s += '<rect class="tl-hit" x="0" y="' + (y - row / 2) + '" width="' + W + '" height="' + row + '" rx="6"/>';   // whole row is tappable
       if (it.rem) {
         var a = x(it.rem[0]), b = x(it.rem[1]);
         s += '<line class="tl-rem-line" x1="' + a + '" x2="' + b + '" y1="' + y + '" y2="' + y + '"/>';
@@ -614,13 +652,16 @@
         s += '<circle cx="' + cx + '" cy="' + y + '" r="5.5" style="fill:' + it.color + '"/>';
       }
       var lo = it.rem ? x(it.rem[0]) : cx, hi = it.rem ? x(it.rem[1]) : it.end ? x(it.end) : cx;
+      // put the label on whichever side it fits (rough width: 12.5px per CJK char)
+      var labelW = Math.min(26, it.name.length) * 12.5 + 8;
+      var right = hi + 14 + labelW <= W - 4 || lo - 14 - labelW < 4;
       var lx = right ? hi + 14 : lo - 14;
       var anchor = right ? "start" : "end";
       s += '<text x="' + lx + '" y="' + (y - 1) + '" text-anchor="' + anchor + '">' + esc(trunc(it.name, 26)) + "</text>";
       s += '<text class="sub" x="' + lx + '" y="' + (y + 12) + '" text-anchor="' + anchor + '">' + mdShort(it.date) + (it.end ? "–" + mdShort(it.end) : "") + " · " + rel(it.date) + (it.noExp && it.rem ? " · 预期未写" : "") + "</text>";
       s += "</g>";
     });
-    return '<div class="tl-wrap">' + s + "</svg></div>";
+    return s + "</svg>";
   }
 
   // ---------- drawer ----------
@@ -679,6 +720,7 @@
     document.querySelectorAll(".views a").forEach(function (a) { if (a.dataset.view === v) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     ["feed", "graph", "events"].forEach(function (k) { $("v-" + k).hidden = k !== v; });
     if (v === "graph") { renderGraph(); scrollCalendarToEnd(); }
+    if (v === "events") renderTimeline();
   }
 
   function rerender() {
@@ -708,11 +750,12 @@
     $("scrim").addEventListener("click", closeDetail);
     window.addEventListener("hashchange", function () { setView(location.hash.slice(1)); });
     var rt;
-    window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(function () { if (state.view === "graph") renderGraph(); }, 200); });
+    window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(function () { if (state.view === "graph") renderGraph(); if (state.view === "events") renderTimeline(); }, 200); });
   }
 
   bind();
   bindTimeFilter();
+  bindTimelinePan();
   load().then(function (data) {
     state.data = data; index(data);
     renderSource(); renderKPIs(); renderFilters(); renderFeed(); renderLegend(); renderEvents(); renderTimeFilter();
