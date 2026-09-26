@@ -567,7 +567,7 @@
     $("n-events").textContent = th.length + ev.length;
     var html = '<div class="ev-grid">';
     html += '<div><p class="sec-t">时间轴 <em>今天 → ' + (function () { var d = ev.filter(function (e) { return e.date; }), l = d[d.length - 1]; return l ? md(l.dateEnd || l.date) : ""; })() + "</em><span class=\"tl-hint\" id=\"tl-hint\" hidden>左右拖动查看</span></p><div class=\"tl-wrap\" id=\"tl\"></div></div>";
-    html += "<div><p class=\"sec-t\">追踪主题 <em>" + th.length + "</em></p>" + th.map(themeCard).join("") + "</div>";
+    html += "<div><p class=\"sec-t\">追踪主题 <em>" + th.length + "</em></p>" + '<div class="theme-list">' + th.map(themeCard).join("") + "</div></div>";
     html += '<div><p class="sec-t">日程事件 <em>' + ev.length + '</em></p><div class="ev-list">' + ev.map(evRow).join("") + "</div></div>";
     var reviews = state.data.plans.filter(function (p) { return p.kind === "复盘"; });
     if (reviews.length) {
@@ -619,11 +619,12 @@
     return '<article class="theme-card" data-id="' + t.id + '" tabindex="0">' +
       '<div class="theme-head"><h3>' + esc(t.name) + '</h3><span class="when">' + pill(t.status) + " · 下次复查 " + (t.date ? md(t.date) + "（" + rel(t.date) + "）" : "未设") + "</span></div>" +
       (t.hypothesis ? '<p class="hyp"><b>假设</b>' + esc(t.hypothesis) + "</p>" : "") +
-      '<div class="signals">' +
-      (t.confirm ? '<div class="signal" style="--sc:var(--c-green)"><b>证实信号</b><p>' + esc(t.confirm) + "</p></div>" : "") +
-      (t.refute ? '<div class="signal" style="--sc:var(--c-red)"><b>推翻信号</b><p>' + esc(t.refute) + "</p></div>" : "") +
-      "</div>" +
-      '<div class="rels">' + tagsHtml(t.tags) + "<span>" + ICON_PLAN + evs.length + " 个检验事件</span><span>" + ICON_DERIVE + t.records.length + " 条相关记录</span></div>" +
+      // only render the signals row when there is something in it; a single signal spans the full width
+      (t.confirm || t.refute ? '<div class="signals' + (t.confirm && t.refute ? "" : " one") + '">' +
+        (t.confirm ? '<div class="signal" style="--sc:var(--c-green)"><b>证实信号</b><p>' + esc(t.confirm) + "</p></div>" : "") +
+        (t.refute ? '<div class="signal" style="--sc:var(--c-red)"><b>推翻信号</b><p>' + esc(t.refute) + "</p></div>" : "") +
+        "</div>" : "") +
+      '<div class="rels theme-foot">' + tagsHtml(t.tags) + "<span>" + ICON_PLAN + evs.length + " 个检验事件</span><span>" + ICON_DERIVE + t.records.length + " 条相关记录</span></div>" +
       "</article>";
   }
 
