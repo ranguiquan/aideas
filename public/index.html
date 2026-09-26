@@ -57,6 +57,24 @@
 
     <section class="view" id="v-feed" aria-label="信息流"></section>
     <section class="view" id="v-graph" aria-label="知识图谱" hidden>
+      <div class="timef" id="timef" role="group" aria-labelledby="tf-label">
+        <div class="timef-head">
+          <span class="flabel" id="tf-label">入库时间</span>
+          <span class="tf-sum" id="tf-sum"></span>
+          <button class="reset" id="tf-all" type="button">全部时间</button>
+        </div>
+        <div class="timef-row">
+          <input type="date" id="tf-from" aria-label="开始日期">
+          <div class="dual">
+            <div class="hist" id="tf-hist" aria-hidden="true"></div>
+            <div class="track"><div class="fill" id="tf-fill"></div></div>
+            <input type="range" id="tf-lo" min="0" max="0" step="1" value="0" aria-label="开始日期">
+            <input type="range" id="tf-hi" min="0" max="0" step="1" value="0" aria-label="结束日期">
+            <div class="ticks" id="tf-ticks" aria-hidden="true"></div>
+          </div>
+          <input type="date" id="tf-to" aria-label="结束日期">
+        </div>
+      </div>
       <div class="graph-bar">
         <div class="legend" id="g-legend"></div>
         <label class="toggle"><input type="checkbox" id="g-tags" checked> 显示标签节点</label>

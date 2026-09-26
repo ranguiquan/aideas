@@ -16,7 +16,7 @@
   var TZ = "Asia/Singapore";
   var DAY = 86400000;
 
-  var state = { data: null, byId: {}, f: { type: new Set(), status: new Set(), tag: new Set() }, q: "", view: "feed", graphReady: false };
+  var state = { data: null, byId: {}, f: { type: new Set(), status: new Set(), tag: new Set() }, q: "", view: "feed", graphReady: false, range: { from: null, to: null }, pos: {}, zoom: null };
 
   // ---------- helpers ----------
   function $(id) { return document.getElementById(id); }
@@ -181,15 +181,23 @@
   }
 
   // ---------- graph ----------
+  function inRange(iso) {
+    var k = sgDay(iso), r = state.range;
+    return (!r.from || k >= r.from) && (!r.to || k <= r.to);
+  }
+
   function graphData() {
-    var recs = filtered(), ids = {}, nodes = [], links = [], seen = {};
+    var recs = filtered().filter(function (r) { return inRange(r.created); });
+    var plans = state.data.plans.filter(function (p) { return inRange(p.created); });
+    var visThemes = plans.filter(function (p) { return p.kind === "追踪主题"; });
+    var ids = {}, nodes = [], links = [], seen = {};
     function addLink(s, t, kind) {
       var key = [s, t].sort().join("|") + kind;
       if (seen[key] || !ids[s] || !ids[t]) return;
       seen[key] = 1; links.push({ source: s, target: t, kind: kind });
     }
     recs.forEach(function (r) { ids[r.id] = 1; nodes.push({ id: r.id, kind: "record", label: r.title, color: TYPE_COLOR[r.type], ref: r }); });
-    state.data.plans.forEach(function (p) {
+    plans.forEach(function (p) {
       ids[p.id] = 1;
       var k = p.kind === "追踪主题" ? "theme" : p.kind === "日程事件" ? "event" : "review";
       nodes.push({ id: p.id, kind: k, label: p.name, color: k === "theme" ? "var(--c-purple)" : k === "event" ? "var(--c-blue)" : "var(--c-gray)", ref: p });
@@ -197,20 +205,23 @@
     if ($("g-tags").checked) {
       var tags = {};
       recs.forEach(function (r) { r.tags.forEach(function (t) { tags[t] = 1; }); });
-      themes().forEach(function (p) { p.tags.forEach(function (t) { tags[t] = 1; }); });
+      visThemes.forEach(function (p) { p.tags.forEach(function (t) { tags[t] = 1; }); });
       Object.keys(tags).forEach(function (t) { ids["tag:" + t] = 1; nodes.push({ id: "tag:" + t, kind: "tag", label: "#" + t, color: tagColor(t) }); });
       recs.forEach(function (r) { r.tags.forEach(function (t) { addLink(r.id, "tag:" + t, "tag"); }); });
-      themes().forEach(function (p) { p.tags.forEach(function (t) { addLink(p.id, "tag:" + t, "tag"); }); });
+      visThemes.forEach(function (p) { p.tags.forEach(function (t) { addLink(p.id, "tag:" + t, "tag"); }); });
     }
     recs.forEach(function (r) {
       r.derivedFrom.forEach(function (s) { addLink(s, r.id, "derive"); });
       r.plans.forEach(function (p) { addLink(r.id, p, "plan"); });
     });
-    state.data.plans.forEach(function (p) {
+    plans.forEach(function (p) {
       p.records.forEach(function (r) { addLink(r, p.id, "plan"); });
       p.theme.forEach(function (t) { addLink(p.id, t, "theme"); });
     });
-    return { nodes: nodes, links: links };
+    // seed positions from the previous render so filtering doesn't reshuffle the layout
+    var seeded = 0;
+    nodes.forEach(function (n) { var p = state.pos[n.id]; if (p) { n.x = p.x; n.y = p.y; seeded++; } });
+    return { nodes: nodes, links: links, seeded: seeded };
   }
 
   function nodeR(d) { return d.kind === "theme" ? 16 : d.kind === "event" ? 9 : d.kind === "review" ? 7 : d.kind === "tag" ? 5 : 9; }
@@ -229,7 +240,9 @@
       .attr("markerWidth", 7).attr("markerHeight", 7).attr("orient", "auto")
       .append("path").attr("d", "M0 0L10 5L0 10z").style("fill", "var(--accent)");
     var root = svg.append("g");
-    svg.call(d3.zoom().scaleExtent([0.4, 3]).on("zoom", function (e) { root.attr("transform", e.transform); }));
+    var zoom = d3.zoom().scaleExtent([0.4, 3]).on("zoom", function (e) { state.zoom = e.transform; root.attr("transform", e.transform); });
+    svg.call(zoom);
+    if (state.zoom) svg.call(zoom.transform, state.zoom);
 
     var link = root.append("g").selectAll("path").data(g.links).join("path")
       .attr("class", function (d) { return "g-link " + d.kind; })
@@ -271,6 +284,7 @@
     }
 
     sim = d3.forceSimulation(g.nodes)
+      .alpha(g.seeded && g.seeded >= g.nodes.length / 2 ? 0.35 : 1)
       .force("link", d3.forceLink(g.links).id(function (d) { return d.id; }).distance(function (l) { return l.kind === "tag" ? 90 : l.kind === "theme" ? 70 : 80; }).strength(function (l) { return l.kind === "tag" ? 0.25 : 0.7; }))
       .force("charge", d3.forceManyBody().strength(function (d) { return d.kind === "tag" ? -140 : -320; }))
       .force("collide", d3.forceCollide().radius(function (d) { return nodeR(d) + 14; }))
@@ -283,8 +297,98 @@
           return "M" + sx + "," + sy + "L" + tx + "," + ty;
         });
         node.attr("transform", function (d) { return "translate(" + d.x + "," + d.y + ")"; });
-      });
+      })
+      .on("tick.pos", function () { g.nodes.forEach(function (n) { state.pos[n.id] = { x: n.x, y: n.y }; }); });
     d3.select(box).append("p").attr("class", "g-hint").text("拖动节点 · 滚轮缩放 · 点击查看详情 · 点击标签筛选");
+  }
+
+  // ---------- time range filter (graph) ----------
+  function timeDomain() {
+    var keys = state.data.records.map(function (r) { return sgDay(r.created); })
+      .concat(state.data.plans.map(function (p) { return sgDay(p.created); }));
+    var min = keys.reduce(function (a, b) { return a < b ? a : b; }, todayKey());
+    var max = keys.reduce(function (a, b) { return a > b ? a : b; }, todayKey());
+    return { min: min, max: max, n: dayNum(max) - dayNum(min) };
+  }
+  function idxOf(key, dom) { return Math.max(0, Math.min(dom.n, dayNum(key) - dayNum(dom.min))); }
+
+  function renderTimeFilter() {
+    var dom = timeDomain(), n = dom.n, r = state.range;
+    var lo = r.from ? idxOf(r.from, dom) : 0, hi = r.to ? idxOf(r.to, dom) : n;
+    var loEl = $("tf-lo"), hiEl = $("tf-hi");
+    [loEl, hiEl].forEach(function (el) { el.max = n; el.disabled = n === 0; });
+    loEl.value = lo; hiEl.value = hi;
+    loEl.style.zIndex = lo >= n ? 3 : 2;   // keep the start thumb grabbable when both sit at the right end
+    var pct = function (i) { return n ? i / n * 100 : 50; };
+    $("tf-fill").style.left = (n ? pct(lo) : 0) + "%";
+    $("tf-fill").style.right = (n ? 100 - pct(hi) : 0) + "%";
+    var from = addDays(dom.min, lo), to = addDays(dom.min, hi);
+    ["tf-from", "tf-to"].forEach(function (id) { $(id).min = dom.min; $(id).max = dom.max; });
+    $("tf-from").value = from; $("tf-to").value = to;
+
+    // per-day record counts (respecting the sidebar filters)
+    var recs = filtered(), counts = [], peak = 1;
+    for (var i = 0; i <= n; i++) counts.push(0);
+    recs.forEach(function (x) { var k = idxOf(sgDay(x.created), dom); counts[k]++; });
+    counts.forEach(function (c) { peak = Math.max(peak, c); });
+    var w = Math.max(3, Math.min(22, 70 / (n + 1)));
+    $("tf-hist").innerHTML = counts.map(function (c, i) {
+      var title = addDays(dom.min, i) + " · " + c + " 条";
+      return '<i class="' + (i >= lo && i <= hi ? "on" : "") + '" title="' + title + '" style="left:' + pct(i) + "%;width:" + (n ? w + "%" : "18px") + ";height:" + (c ? Math.max(12, c / peak * 100) : 7) + '%"></i>';
+    }).join("");
+
+    var ticks = [dom.min];
+    if (n >= 6) ticks.push(addDays(dom.min, Math.round(n / 2)));
+    if (n > 0) ticks.push(dom.max);
+    $("tf-ticks").innerHTML = ticks.map(function (k) { return '<span style="left:' + pct(idxOf(k, dom)) + '%">' + mdShort(k) + "</span>"; }).join("");
+
+    var inCount = counts.slice(lo, hi + 1).reduce(function (a, b) { return a + b; }, 0);
+    $("tf-sum").textContent = (lo === hi ? md(from) : md(from) + " – " + md(to)) + " · " + inCount + " 条记录";
+    $("tf-all").hidden = !r.from && !r.to;
+  }
+
+  function setRange(lo, hi) {
+    var dom = timeDomain();
+    lo = Math.max(0, Math.min(dom.n, lo)); hi = Math.max(0, Math.min(dom.n, hi));
+    state.range.from = lo > 0 ? addDays(dom.min, lo) : null;
+    state.range.to = hi < dom.n ? addDays(dom.min, hi) : null;
+    renderTimeFilter();
+    scheduleGraph();
+  }
+
+  var graphFrame = 0;
+  function scheduleGraph() {
+    if (graphFrame) return;
+    graphFrame = requestAnimationFrame(function () {
+      graphFrame = 0;
+      if (state.view === "graph") renderGraph();
+      else $("n-graph").textContent = graphData().nodes.filter(function (n) { return n.kind !== "tag"; }).length;
+    });
+  }
+
+  function bindTimeFilter() {
+    var loEl = $("tf-lo"), hiEl = $("tf-hi");
+    loEl.addEventListener("input", function () {
+      var lo = +loEl.value, hi = +hiEl.value;
+      if (lo > hi) lo = hi;                       // the start can't pass the end
+      setRange(lo, hi);
+    });
+    hiEl.addEventListener("input", function () {
+      var lo = +loEl.value, hi = +hiEl.value;
+      if (hi < lo) hi = lo;
+      setRange(lo, hi);
+    });
+    $("tf-from").addEventListener("change", function (e) {
+      var dom = timeDomain(), hi = +hiEl.value;
+      var lo = e.target.value ? idxOf(e.target.value, dom) : 0;
+      setRange(lo, Math.max(lo, hi));            // pushing the start past the end drags the end along
+    });
+    $("tf-to").addEventListener("change", function (e) {
+      var dom = timeDomain(), lo = +loEl.value;
+      var hi = e.target.value ? idxOf(e.target.value, dom) : dom.n;
+      setRange(Math.min(lo, hi), hi);
+    });
+    $("tf-all").addEventListener("click", function () { state.range.from = state.range.to = null; renderTimeFilter(); scheduleGraph(); });
   }
 
   function renderLegend() {
@@ -457,7 +561,7 @@
   }
 
   function rerender() {
-    renderFilters(); renderFeed();
+    renderFilters(); renderFeed(); renderTimeFilter();
     if (state.view === "graph") renderGraph(); else $("n-graph").textContent = graphData().nodes.filter(function (n) { return n.kind !== "tag"; }).length;
   }
 
@@ -487,9 +591,10 @@
   }
 
   bind();
+  bindTimeFilter();
   load().then(function (data) {
     state.data = data; index(data);
-    renderSource(); renderKPIs(); renderFilters(); renderFeed(); renderLegend(); renderEvents();
+    renderSource(); renderKPIs(); renderFilters(); renderFeed(); renderLegend(); renderEvents(); renderTimeFilter();
     $("n-graph").textContent = graphData().nodes.filter(function (n) { return n.kind !== "tag"; }).length;
     setView(location.hash.slice(1));
   }).catch(function () {
