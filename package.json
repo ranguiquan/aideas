@@ -1,0 +1,13 @@
+{
+  "name": "aideas",
+  "private": true,
+  "description": "Aideas 信息台：基于 Notion 与 Claude 技能的个人信息流看板",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "snapshot": "node scripts/snapshot.js",
+    "test": "node --test tests/*.test.js"
+  }
+}

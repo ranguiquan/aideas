@@ -9,21 +9,66 @@
 
 ---
 
+## 零、本地上手（Claude Code）
+
+需要 Node 18 或更新版本，以及 Claude Code。仓库没有 npm 依赖，也不需要构建。
+
+```bash
+git clone https://github.com/ranguiquan/aideas.git
+cd aideas
+cp .env.example .env.local   # 填入 NOTION_TOKEN、AUTH_PASSWORD、AUTH_SECRET
+npm test                     # 跑一遍测试，确认环境正常
+npm run dev                  # http://localhost:3000，用 AUTH_PASSWORD 登录
+claude                       # 在仓库目录里启动 Claude Code
+```
+
+在仓库里启动 Claude Code 后：
+
+- **`CLAUDE.md`** 会被自动读取，里面写了项目结构、约定、隐私规则和已知的坑，Claude 不需要你重新解释。
+- **三个技能**（`.claude/skills/`）自动加载。直接说「记进库里」「复盘」「把下周 CPI 加进计划」就能用。
+- **Notion 连接**：`.mcp.json` 里配置了 Notion 的 MCP。第一次启动时 Claude Code 会询问是否启用它，同意后运行 `/mcp`，按提示登录 Notion 并授权。
+- **常用命令已预先允许**（`.claude/settings.json`），跑测试、启动服务时不用每次确认。个人设置写在 `.claude/settings.local.json`，这个文件已被 gitignore。
+
+| 命令 | 作用 |
+| --- | --- |
+| `npm run dev` | 本地服务器：静态页加 `api/` 接口，读取 `.env.local`；改接口代码后不用重启 |
+| `npm test` | 测试鉴权和 Notion 数据转换，不访问网络 |
+| `npm run snapshot` | 把 Notion 数据拉到 `public/data/snapshot.json`，用于离线预览。这个文件含私密数据，已被 gitignore |
+
+**离线预览：** 先 `npm run snapshot`，再把 `.env.local` 里的 `AUTH_*` 注释掉，然后 `npm run dev`。这时接口不可用，页面会改读快照。
+
+**本地和云端的区别：** `plan-event-tracker` 的写预期 / 补结果提醒要用 Claude Code 云端的定时任务。在本地运行时事件照常记录，但不会创建提醒；需要提醒时，在云端会话（claude.ai/code）里加事件。
+
+**浏览器：** 本地登录建议用 Chrome、Edge 或 Firefox。会话 Cookie 带 `Secure` 属性，这几个浏览器在 `localhost` 上允许，Safari 可能会拦截。
+
+---
+
 ## 目录结构
 
 ```
-.claude/skills/
-  notion-info-vault/SKILL.md    记进库里：捕获信息和灵感
-  plan-event-tracker/SKILL.md   计划事件：加事件、写预期、补结果
-  periodic-review/SKILL.md      复盘：分拣、回看、定主题
+CLAUDE.md                         给 Claude Code 的项目说明（结构、约定、隐私规则、已知的坑）
+.claude/
+  skills/
+    notion-info-vault/SKILL.md    记进库里：捕获信息和灵感
+    plan-event-tracker/SKILL.md   计划事件：加事件、写预期、补结果
+    periodic-review/SKILL.md      复盘：分拣、回看、定主题
+  settings.json                   预先允许的常用命令
+.mcp.json                         Notion MCP 配置（技能读写 Notion 用）
 public/
   index.html  app.js  styles.css  信息台（信息流 / 知识图谱 / 主题与事件）
+  theme.js                        外观切换（跟随系统 / 明亮 / 暗黑）
   method.html                     方法论页
   data/snapshot.json              本地快照（已 gitignore，不提交）
 api/
   data.js                         Vercel Function：实时读取 Notion（需要登录）
   login.js  logout.js             登录 / 退出
   _auth.js                        密码校验和会话 Cookie 签名
+scripts/
+  dev.js                          本地开发服务器（模拟 Vercel）
+  snapshot.js                     拉取 Notion 数据到本地快照
+tests/                            node:test 测试
+.env.example                      环境变量模板
+package.json                      npm 脚本（没有依赖）
 vercel.json                       Vercel 配置（输出目录 public/，无需构建）
 ```
 
@@ -110,7 +155,7 @@ vercel.json                       Vercel 配置（输出目录 public/，无需�
 
 - 线上：`api/data.js` 用 Notion API 实时读取两个数据库，每次打开页面都是最新数据，不经过 CDN 缓存。只有登录后才能读取（见下方「访问控制」）。
 - 本地：如果存在 `public/data/snapshot.json`，页面会用它（这个文件在 `.gitignore` 里，不会提交）。
-- 两者都没有时，页面提示「未连接 Notion」。页面左下角会显示当前数据来源：实时 / 快照 / 未连接。
+- 两者都没有时，页面提示「未连接 Notion」。页面左下角显示当前数据来源：「实时 · 3 分钟前」「快照 · 9月25日」或「未连接」，点一下可以刷新。
 
 ---
 
@@ -144,7 +189,7 @@ Vercel 的正式地址默认从 `main` 分支部署。推到其他分支会生�
 | `AUTH_PASSWORD` | 是 | 登录密码，至少 12 位，建议用一句长短语 |
 | `AUTH_SECRET` | 是 | 会话签名密钥，至少 32 位随机字符，用 `openssl rand -base64 32` 生成 |
 
-勾选环境时，Production 和 Preview 都要勾，否则预览部署读不到。添加后到 **Deployments**，在最新一次部署右侧点 `···` → **Redeploy**。部署完成后打开页面，输入 `AUTH_PASSWORD` 登录，左下角应显示「实时 · Notion」。
+勾选环境时，Production 和 Preview 都要勾，否则预览部署读不到。添加后到 **Deployments**，在最新一次部署右侧点 `···` → **Redeploy**。部署完成后打开页面，输入 `AUTH_PASSWORD` 登录，左下角应显示「实时 · 刚刚」。
 
 ### 4. 访问控制
 
@@ -182,10 +227,6 @@ npx vercel --prod                 # 发布正式地址
 
 ---
 
-## 本地预览
+## 本地开发
 
-```bash
-npx serve public
-```
-
-打开终端里显示的地址。没有 `public/data/snapshot.json` 时，页面显示「未连接 Notion」。本地的 `/api/data` 不会运行；要在本地连 Notion 并测试登录，用 `npx vercel dev`，并在 `.env.local` 里写入 `NOTION_TOKEN`、`AUTH_PASSWORD`、`AUTH_SECRET`（这个文件已被 gitignore）。
+见上方「零、本地上手」。`npm run dev` 会同时运行静态页和 `api/` 接口，行为和 Vercel 上一致；也可以用 `npx vercel dev`，效果相同，但需要先登录 Vercel CLI。
