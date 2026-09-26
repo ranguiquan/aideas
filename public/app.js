@@ -422,10 +422,10 @@
       }
       return dist;
     }
-    // radius per hop: 0 (centre), 1, 2, 3+, scaled to the canvas; unreachable nodes sit on the outermost ring
-    var maxR = Math.max(160, Math.min(W, H) / 2 - 36);
-    var RINGS = [0, maxR * 0.32, maxR * 0.58, maxR * 0.82], OUTER = maxR;
-    function ringOf(n) { return n._hop === undefined ? OUTER : RINGS[Math.min(n._hop, 3)]; }
+    // radius per hop: 0 (centre), 1, 2, 3, 4+, scaled to the canvas; unreachable nodes sit on the outermost ring
+    var maxR = Math.max(180, Math.min(W, H) / 2 - 36);
+    var RINGS = [0, maxR * 0.26, maxR * 0.46, maxR * 0.65, maxR * 0.83], OUTER = maxR, DEEPEST = RINGS.length - 1;
+    function ringOf(n) { return n._hop === undefined ? OUTER : RINGS[Math.min(n._hop, DEEPEST)]; }
     function viewCenter() { return state.zoom ? state.zoom.invert([W / 2, H / 2]) : [W / 2, H / 2]; }
     function drawRings(cx, cy) {
       rings.selectAll("circle").data(RINGS.slice(1)).join("circle").attr("cx", cx).attr("cy", cy).attr("r", function (r) { return r; });
@@ -437,8 +437,8 @@
         .force("radial", d3.forceRadial(ringOf, cx, cy).strength(function (n) { return n.id === d.id ? 0 : n._hop === undefined ? 0.25 : 0.8; }));
       sim.force("link").strength(0.08);   // let the rings, not the links, decide the shape
       node.classed("focus", function (n) { return n.id === d.id; })
-        .attr("data-hop", function (n) { return n._hop === undefined ? "far" : Math.min(n._hop, 3); });
-      link.classed("far", function (l) { var a = l.source._hop, b = l.target._hop; return a === undefined || b === undefined || Math.max(a, b) >= 3; });
+        .attr("data-hop", function (n) { return n._hop === undefined ? "far" : Math.min(n._hop, DEEPEST); });
+      link.classed("far", function (l) { var a = l.source._hop, b = l.target._hop; return a === undefined || b === undefined || Math.max(a, b) >= DEEPEST; });
       drawRings(cx, cy);
       $("g-reset").hidden = false;
     }

@@ -332,8 +332,9 @@ button{font:inherit;color:inherit}
 
 /* graph focus mode */
 .g-rings circle{fill:none;stroke:var(--line-2);stroke-dasharray:3 6}
-.g-node[data-hop="2"]:not(.dim){opacity:.8}
-.g-node[data-hop="3"]:not(.dim){opacity:.5}
+.g-node[data-hop="2"]:not(.dim){opacity:.85}
+.g-node[data-hop="3"]:not(.dim){opacity:.62}
+.g-node[data-hop="4"]:not(.dim){opacity:.42}
 .g-node[data-hop="far"]:not(.dim){opacity:.28}
 .g-link.far:not(.dim){opacity:.2}
 .g-node.focus text{font-weight:700;fill:var(--ink)}
