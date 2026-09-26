@@ -340,14 +340,17 @@
     if (sim) sim.stop();
     box.innerHTML = "";
     var svg = d3.select(box).append("svg").attr("viewBox", [0, 0, W, H]).attr("role", "img").attr("aria-label", "记录、主题、事件与标签的关系图");
+    var lastPointer = "mouse", tipFor = null;
+    svg.on("click.tip", function (e) { if (!e.target.closest(".g-node")) hideTip(); });   // tap on empty space closes the card
     svg.append("defs").append("marker").attr("id", "arr").attr("viewBox", "0 0 10 10").attr("refX", 10).attr("refY", 5)
       .attr("markerWidth", 7).attr("markerHeight", 7).attr("orient", "auto")
       .append("path").attr("d", "M0 0L10 5L0 10z").style("fill", "var(--accent)");
     var root = svg.append("g");
-    var zoom = d3.zoom().scaleExtent([0.4, 3]).on("zoom", function (e) { state.zoom = e.transform; root.attr("transform", e.transform); });
+    var zoom = d3.zoom().scaleExtent([0.4, 3]).on("zoom", function (e) { state.zoom = e.transform; root.attr("transform", e.transform); scheduleLabels(); });
     svg.call(zoom);
     if (state.zoom) svg.call(zoom.transform, state.zoom);
 
+    var rings = root.append("g").attr("class", "g-rings");   // guide circles in focus mode
     var link = root.append("g").selectAll("path").data(g.links).join("path")
       .attr("class", function (d) { return "g-link " + d.kind; })
       .attr("marker-end", function (d) { return d.kind === "derive" ? "url(#arr)" : null; });
@@ -355,24 +358,44 @@
     var node = root.append("g").selectAll("g").data(g.nodes).join("g")
       .attr("class", function (d) { return "g-node " + d.kind + "node"; })
       .attr("tabindex", function (d) { return d.kind === "tag" ? null : 0; })
-      .on("click", function (e, d) { if (d.kind === "tag") toggleTag(d.id.slice(4)); else openDetail(d.id); })
+      .on("pointerdown.kind", function (e) { lastPointer = e.pointerType; })
+      .on("click", function (e, d) {
+        // touch: first tap shows the full-title card, a second tap on the same node acts
+        if (lastPointer !== "mouse" && tipFor !== d.id) { showTip(e, d, true); tipFor = d.id; return; }
+        hideTip();
+        if (d.kind === "tag") toggleTag(d.id.slice(4)); else openDetail(d.id);
+      })
       .on("keydown", function (e, d) { if (e.key === "Enter" && d.kind !== "tag") openDetail(d.id); })
-      .on("mouseenter", function (e, d) { highlight(d); })
-      .on("mouseleave", function () { highlight(null); })
+      .on("mouseenter", function (e, d) { highlight(d); showTip(e, d); })
+      .on("mousemove", function (e) { moveTip(e); })
+      .on("mouseleave", function () { highlight(null); if (lastPointer === "mouse") hideTip(); })   // touch fires a synthetic mouseleave right after a tap
       .call(d3.drag()
-        .on("start", function (e, d) { if (!e.active) sim.alphaTarget(0.25).restart(); d.fx = d.x; d.fy = d.y; })
-        .on("drag", function (e, d) { d.fx = e.x; d.fy = e.y; })
-        .on("end", function (e, d) { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
+        .on("start", function (e, d) {
+          d._sx = e.x; d._sy = e.y; d._moved = false;
+          if (!e.active) sim.alphaTarget(0.25).restart();
+          d.fx = d.x; d.fy = d.y;
+        })
+        .on("drag", function (e, d) {
+          // a real drag (not a click) makes this node the centre of the layout
+          if (!d._moved && Math.hypot(e.x - d._sx, e.y - d._sy) > 4) { d._moved = true; hideTip(); focusOn(d); }
+          d.fx = e.x; d.fy = e.y;
+          if (d._moved) moveFocus(e.x, e.y);
+        })
+        .on("end", function (e, d) {
+          if (!e.active) sim.alphaTarget(0);
+          if (d._moved) glideToCenter(d);
+          else if (d.id !== state.focusId) { d.fx = null; d.fy = null; }
+        }));
 
     node.each(function (d) {
       var s = d3.select(this), r = nodeR(d);
       if (d.kind === "event") {
-        s.append("rect").attr("x", -r).attr("y", -r).attr("width", r * 2).attr("height", r * 2).attr("rx", 2).attr("transform", "rotate(45)").style("fill", d.color);
+        s.append("rect").attr("class", "shape").attr("x", -r).attr("y", -r).attr("width", r * 2).attr("height", r * 2).attr("rx", 2).attr("transform", "rotate(45)").style("fill", d.color);
       } else if (d.kind === "tag") {
-        s.append("circle").attr("r", r).style("fill", "var(--surface)").style("stroke", d.color).style("stroke-width", 2);
+        s.append("circle").attr("class", "shape").attr("r", r).style("fill", "var(--surface)").style("stroke", d.color).style("stroke-width", 2);
       } else if (d.kind === "theme") {
         s.append("circle").attr("r", r + 5).style("fill", "none").style("stroke", d.color).style("stroke-width", 1.5).style("opacity", 0.45);
-        s.append("circle").attr("r", r).style("fill", d.color);
+        s.append("circle").attr("class", "shape").attr("r", r).style("fill", d.color);
         if (d.hiddenEvents) {   // events folded into the theme: show how many
           var bx = -r * 0.72, by = -r * 0.72;
           s.append("circle").attr("cx", bx).attr("cy", by).attr("r", 7.5).style("fill", "var(--c-blue)").style("stroke", "var(--surface)").style("stroke-width", 2);
@@ -380,10 +403,10 @@
           s.append("title").text(d.hiddenEvents + " 个检验事件已收起（打开「显示全部事件」可展开）");
         }
       } else {
-        s.append("circle").attr("r", r).style("fill", d.color).style("stroke", "var(--surface)").style("stroke-width", 2);
+        s.append("circle").attr("class", "shape").attr("r", r).style("fill", d.color).style("stroke", "var(--surface)").style("stroke-width", 2);
         if (d.kind === "record" && d.ref.status === "待处理") s.append("circle").attr("r", 3).attr("cx", r * 0.75).attr("cy", -r * 0.75).style("fill", "var(--c-red)").style("stroke", "var(--surface)").style("stroke-width", 1.5);
       }
-      s.append("text").attr("x", r + 7).attr("y", 4).text(d.kind === "tag" ? d.label : trunc(d.label, 13));
+      s.append("text").attr("class", "lbl").attr("x", r + 7).attr("dy", "0.35em").text(d.kind === "tag" ? d.label : trunc(d.label, 18));
     });
 
     var adj = {};
@@ -392,6 +415,155 @@
       node.classed("dim", function (n) { return d && n.id !== d.id && !adj[d.id + "|" + n.id]; });
       link.classed("dim", function (l) { return d && l.source.id !== d.id && l.target.id !== d.id; });
     }
+
+    // ----- labels: keep them readable -----
+    // Text keeps the same on-screen size while zooming; after each layout change labels are placed greedily
+    // by priority, facing away from the centre, and any label that would overlap a placed label or another
+    // node is hidden (the hover card still shows the full title). Zooming in frees space, so more appear.
+    var focusC = null, labelFrame = 0, tickCount = 0;
+    node.each(function (d) { d._w = this.querySelector("text.lbl").getComputedTextLength(); });   // width at k = 1
+    var degree = {};
+    g.links.forEach(function (l) {
+      var s = l.source.id || l.source, t = l.target.id || l.target;
+      degree[s] = (degree[s] || 0) + 1; degree[t] = (degree[t] || 0) + 1;
+    });
+    function labelPriority(d) {
+      if (state.focusId) {
+        if (d.id === state.focusId) return 1000;
+        var h = d._hop === undefined ? 9 : d._hop;
+        return 600 - h * 100 + (d.kind === "theme" ? 30 : d.kind === "record" ? 20 : 0);
+      }
+      var base = d.kind === "theme" ? 300 : d.kind === "record" ? 200 : d.kind === "event" ? 150 : 100;
+      return base + (degree[d.id] || 0) * 5;
+    }
+    function layoutLabels() {
+      var k = state.zoom ? state.zoom.k : 1, c = focusC || viewCenter();
+      var h = 14 / k, gap = 6 / k, placed = [];
+      function hits(b) {
+        for (var i = 0; i < placed.length; i++) {
+          var p = placed[i];
+          if (b[0] < p[0] + p[2] && b[0] + b[2] > p[0] && b[1] < p[1] + p[3] && b[1] + b[3] > p[1]) return true;
+        }
+        return false;
+      }
+      // every node's own shape is an obstacle for other nodes' labels
+      g.nodes.forEach(function (d) { var r = nodeR(d) + 1; placed.push([d.x - r, d.y - r, r * 2, r * 2, d.id]); });
+      var order = g.nodes.slice().sort(function (a, b) { return labelPriority(b) - labelPriority(a); });
+      // visible area in graph coordinates, so labels never run off the canvas
+      var tl = state.zoom ? state.zoom.invert([0, 0]) : [0, 0], br = state.zoom ? state.zoom.invert([W, H]) : [W, H];
+      function inView(b) { return b[0] >= tl[0] + 4 / k && b[0] + b[2] <= br[0] - 4 / k && b[1] >= tl[1] && b[1] + b[3] <= br[1]; }
+      order.forEach(function (d) {
+        var off = nodeR(d) + gap, w = d._w / k, outward = d.x >= c[0] ? 1 : -1;
+        var own = placed.filter(function (p) { return p[4] === d.id; });
+        placed = placed.filter(function (p) { return p[4] !== d.id; });   // a label may touch its own node
+        // try facing away from the centre first, then the other side; hide only if neither fits
+        d._hideLabel = true; d._off = off; d._side = outward;
+        [outward, -outward].some(function (side) {
+          var box = side > 0 ? [d.x + off, d.y - h / 2, w, h] : [d.x - off - w, d.y - h / 2, w, h];
+          if (!inView(box) || hits(box)) return false;
+          d._side = side; d._hideLabel = false; placed.push(box);
+          return true;
+        });
+        placed = placed.concat(own);
+      });
+      node.classed("nolabel", function (d) { return d._hideLabel; });
+      node.select("text.lbl")
+        .style("font-size", (11.5 / k) + "px").style("stroke-width", (4 / k) + "px")
+        .attr("x", function (d) { return d._side * d._off; })
+        .attr("text-anchor", function (d) { return d._side > 0 ? "start" : "end"; });
+    }
+    function scheduleLabels() {
+      if (labelFrame) return;
+      labelFrame = requestAnimationFrame(function () { labelFrame = 0; layoutLabels(); });
+    }
+
+    // hover card with the full title
+    var tip = d3.select(box).append("div").attr("class", "g-tip").attr("hidden", true);
+    function showTip(e, d, tapped) {
+      var o = d.ref || {}, meta = d.kind === "tag" ? "标签" : o._kind === "record" ? [o.type, o.status].filter(Boolean).join(" · ") : [o.kind, o.status, o.date ? md(o.date) : ""].filter(Boolean).join(" · ");
+      tip.html("<b>" + esc(d.kind === "tag" ? d.label : d.label) + "</b>" + (meta ? "<span>" + esc(meta) + "</span>" : "") +
+        (tapped ? "<em>" + (d.kind === "tag" ? "再点一次按此标签筛选" : "再点一次查看详情") + "</em>" : "")).attr("hidden", null);
+      moveTip(e);
+    }
+    function moveTip(e) {
+      var p = d3.pointer(e, box), bw = box.clientWidth, tw = tip.node().offsetWidth;
+      tip.style("left", Math.min(p[0] + 14, bw - tw - 8) + "px").style("top", (p[1] + 16) + "px");
+    }
+    function hideTip() { tip.attr("hidden", true); tipFor = null; }
+
+    // ----- focus mode: radial layout by hop distance from one node -----
+    var nbrs = {};
+    g.links.forEach(function (l) {
+      var s = l.source.id || l.source, t = l.target.id || l.target;
+      (nbrs[s] = nbrs[s] || []).push(t); (nbrs[t] = nbrs[t] || []).push(s);
+    });
+    function hopsFrom(id) {
+      var dist = {}, q = [id];
+      dist[id] = 0;
+      while (q.length) {
+        var c = q.shift();
+        (nbrs[c] || []).forEach(function (n) { if (dist[n] === undefined) { dist[n] = dist[c] + 1; q.push(n); } });
+      }
+      return dist;
+    }
+    // radius per hop: 0 (centre), 1, 2, 3, 4+, scaled to the canvas; unreachable nodes sit on the outermost ring
+    var maxR = Math.max(180, Math.min(W, H) / 2 - 36);
+    var RINGS = [0, maxR * 0.26, maxR * 0.46, maxR * 0.65, maxR * 0.83], OUTER = maxR, DEEPEST = RINGS.length - 1;
+    function ringOf(n) { return n._hop === undefined ? OUTER : RINGS[Math.min(n._hop, DEEPEST)]; }
+    function viewCenter() { return state.zoom ? state.zoom.invert([W / 2, H / 2]) : [W / 2, H / 2]; }
+    function drawRings(cx, cy) {
+      rings.selectAll("circle").data(RINGS.slice(1)).join("circle").attr("cx", cx).attr("cy", cy).attr("r", function (r) { return r; });
+    }
+    function applyFocus(d, cx, cy) {
+      var dist = hopsFrom(d.id);
+      g.nodes.forEach(function (n) { n._hop = dist[n.id]; });
+      sim.force("x", null).force("y", null)
+        .force("radial", d3.forceRadial(ringOf, cx, cy).strength(function (n) { return n.id === d.id ? 0 : n._hop === undefined ? 0.25 : 0.8; }));
+      sim.force("link").strength(0.08);   // let the rings, not the links, decide the shape
+      node.classed("focus", function (n) { return n.id === d.id; })
+        .attr("data-hop", function (n) { return n._hop === undefined ? "far" : Math.min(n._hop, DEEPEST); });
+      link.classed("far", function (l) { var a = l.source._hop, b = l.target._hop; return a === undefined || b === undefined || Math.max(a, b) >= DEEPEST; });
+      drawRings(cx, cy);
+      focusC = [cx, cy];
+      $("g-reset").hidden = false;
+    }
+    function focusOn(d) {
+      if (state.focusId && state.focusId !== d.id) {   // release the previous centre
+        var prev = g.nodes.find(function (n) { return n.id === state.focusId; });
+        if (prev) { prev.fx = null; prev.fy = null; }
+      }
+      state.focusId = d.id;
+      applyFocus(d, d.x, d.y);
+      sim.alpha(0.7).restart();
+    }
+    function moveFocus(x, y) {
+      var r = sim.force("radial");
+      if (r) { r.x(x).y(y); }
+      drawRings(x, y);
+      focusC = [x, y];
+    }
+    function glideToCenter(d) {
+      var c = viewCenter(), fx = d.fx, fy = d.fy, dur = 550;
+      var t = d3.timer(function (el) {
+        var k = Math.min(1, el / dur), e = d3.easeCubicInOut(k);
+        d.fx = fx + (c[0] - fx) * e; d.fy = fy + (c[1] - fy) * e;
+        moveFocus(d.fx, d.fy);
+        if (sim.alpha() < 0.3) sim.alpha(0.3).restart();
+        if (k >= 1) t.stop();
+      });
+    }
+    state.resetFocus = function () {
+      state.focusId = null;
+      g.nodes.forEach(function (n) { n.fx = null; n.fy = null; n._hop = undefined; });
+      sim.force("radial", null).force("x", d3.forceX(W / 2).strength(0.035)).force("y", d3.forceY(H / 2).strength(0.07));
+      sim.force("link").strength(function (l) { return l.kind === "tag" ? 0.25 : 0.7; });
+      node.classed("focus", false).attr("data-hop", null);
+      link.classed("far", false);
+      rings.selectAll("circle").remove();
+      focusC = null;
+      $("g-reset").hidden = true;
+      sim.alpha(0.8).restart();
+    };
 
     sim = d3.forceSimulation(g.nodes)
       .alpha(g.seeded && g.seeded >= g.nodes.length / 2 ? 0.35 : 1)
@@ -408,8 +580,17 @@
         });
         node.attr("transform", function (d) { return "translate(" + d.x + "," + d.y + ")"; });
       })
-      .on("tick.pos", function () { g.nodes.forEach(function (n) { state.pos[n.id] = { x: n.x, y: n.y }; }); });
-    d3.select(box).append("p").attr("class", "g-hint").text("拖动节点 · 滚轮缩放 · 点击查看详情 · 点击标签筛选");
+      .on("tick.pos", function () {
+        g.nodes.forEach(function (n) { state.pos[n.id] = { x: n.x, y: n.y }; });
+        if (++tickCount % 4 === 0) scheduleLabels();
+      })
+      .on("end", layoutLabels);
+    // keep the chosen centre across re-renders (filters, resize)
+    var fd = state.focusId && g.nodes.find(function (n) { return n.id === state.focusId; });
+    if (fd) { var c0 = viewCenter(); fd.fx = c0[0]; fd.fy = c0[1]; applyFocus(fd, c0[0], c0[1]); }
+    else { state.focusId = null; $("g-reset").hidden = true; }
+    layoutLabels();
+    d3.select(box).append("p").attr("class", "g-hint").text("拖动任一节点，以它为中心重新排版 · 放大可显示更多名称 · 悬停看全名 · 点击查看详情");
   }
 
   // ---------- time range filter (graph) ----------
@@ -852,6 +1033,7 @@
     $("q").addEventListener("input", function (e) { state.q = e.target.value; rerender(); });
     $("g-tags").addEventListener("change", renderGraph);
     $("g-events").addEventListener("change", renderGraph);
+    $("g-reset").addEventListener("click", function () { if (state.resetFocus) state.resetFocus(); });
     document.addEventListener("click", function (e) {
       var el = e.target.closest("[data-id]");
       if (el && !el.closest(".g-node")) openDetail(el.dataset.id);

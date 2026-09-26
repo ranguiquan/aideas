@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&display=swap">
 <link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
 </head>
 <body>
 <div class="app">
@@ -43,7 +44,14 @@
 
     <div class="side-foot">
       <p class="src" id="src"><i></i><span>加载中</span></p>
+      <div class="side-foot-row">
+      <div class="theme-switch" role="group" aria-label="外观">
+        <button type="button" data-mode="system" title="跟随系统" aria-label="跟随系统"><svg viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="9" rx="1.5"/><path d="M5.5 14h5M8 11.5V14"/></svg></button>
+        <button type="button" data-mode="light" title="明亮" aria-label="明亮"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1"/></svg></button>
+        <button type="button" data-mode="dark" title="暗黑" aria-label="暗黑"><svg viewBox="0 0 16 16"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7z"/></svg></button>
+      </div>
       <button class="logout" id="logout" type="button" hidden>退出登录</button>
+      </div>
     </div>
   </aside>
 
@@ -90,6 +98,7 @@
       <div class="graph-bar">
         <div class="legend" id="g-legend"></div>
         <div class="toggles">
+          <button class="reset" id="g-reset" type="button" hidden>恢复默认布局</button>
           <label class="toggle"><input type="checkbox" id="g-events"> 显示全部事件</label>
           <label class="toggle"><input type="checkbox" id="g-tags" checked> 显示标签节点</label>
         </div>
@@ -111,7 +120,14 @@
     <input id="login-pw" name="password" type="password" autocomplete="current-password" required>
     <p class="login-err" id="login-err" role="alert" hidden></p>
     <button class="login-btn" id="login-btn" type="submit">登录</button>
-    <p class="login-note">登录后 30 天内免输密码。</p>
+    <div class="login-foot">
+      <p class="login-note">登录后 30 天内免输密码。</p>
+      <div class="theme-switch" role="group" aria-label="外观">
+        <button type="button" data-mode="system" title="跟随系统" aria-label="跟随系统"><svg viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="9" rx="1.5"/><path d="M5.5 14h5M8 11.5V14"/></svg></button>
+        <button type="button" data-mode="light" title="明亮" aria-label="明亮"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1"/></svg></button>
+        <button type="button" data-mode="dark" title="暗黑" aria-label="暗黑"><svg viewBox="0 0 16 16"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7z"/></svg></button>
+      </div>
+    </div>
   </form>
 </div>
 
