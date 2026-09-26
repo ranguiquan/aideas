@@ -33,9 +33,10 @@
   function dayNum(key) { var p = key.split("-"); return Date.UTC(+p[0], +p[1] - 1, +p[2]) / DAY; }
   function daysUntil(key) { return dayNum(key) - dayNum(todayKey()); }
   function addDays(key, n) { return new Date((dayNum(key) + n) * DAY).toISOString().slice(0, 10); }
-  function md(key) { var p = key.split("-"); return +p[1] + "月" + +p[2] + "日"; }
-  function mdShort(key) { var p = key.split("-"); return p[1] + "/" + p[2]; }
+  function md(key) { if (!key) return "—"; var p = key.split("-"); return +p[1] + "月" + +p[2] + "日"; }
+  function mdShort(key) { if (!key) return "—"; var p = key.split("-"); return p[1] + "/" + p[2]; }
   function rel(key) {
+    if (!key) return "日期未定";
     var d = daysUntil(key);
     if (d === 0) return "今天";
     if (d === 1) return "明天";
@@ -80,8 +81,17 @@
     return "在 Vercel 项目的 Environment Variables 中添加 <code>NOTION_TOKEN</code>，在 Notion 里把两个数据库连接到这个 integration，然后 Redeploy。";
   }
 
+  // Notion dates can carry a time ("2026-10-14T20:30:00.000+08:00"). Layout works on SGT day keys,
+  // so normalize them here and keep the time for display.
+  function toKey(s) { return s && s.length > 10 ? sgDay(s) : s; }
+
   function index(data) {
     state.byId = {};
+    data.plans.forEach(function (p) {
+      p.time = p.date && p.date.length > 10 ? fmtTime.format(new Date(p.date)) : null;
+      p.date = toKey(p.date); p.dateEnd = toKey(p.dateEnd);
+    });
+    data.records.forEach(function (r) { r.reviewDate = toKey(r.reviewDate); });
     data.records.forEach(function (r) { r._kind = "record"; state.byId[r.id] = r; });
     data.plans.forEach(function (p) { p._kind = "plan"; state.byId[p.id] = p; });
   }
@@ -552,10 +562,11 @@
 
   // ---------- events ----------
   function renderEvents() {
-    var th = themes(), ev = events().slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    // dated events first (chronological), undated ones at the end
+    var th = themes(), ev = events().slice().sort(function (a, b) { return !a.date ? 1 : !b.date ? -1 : a.date < b.date ? -1 : 1; });
     $("n-events").textContent = th.length + ev.length;
     var html = '<div class="ev-grid">';
-    html += '<div><p class="sec-t">时间轴 <em>今天 → ' + (ev.length ? md(ev[ev.length - 1].dateEnd || ev[ev.length - 1].date) : "") + "</em><span class=\"tl-hint\" id=\"tl-hint\" hidden>左右拖动查看</span></p><div class=\"tl-wrap\" id=\"tl\"></div></div>";
+    html += '<div><p class="sec-t">时间轴 <em>今天 → ' + (function () { var d = ev.filter(function (e) { return e.date; }), l = d[d.length - 1]; return l ? md(l.dateEnd || l.date) : ""; })() + "</em><span class=\"tl-hint\" id=\"tl-hint\" hidden>左右拖动查看</span></p><div class=\"tl-wrap\" id=\"tl\"></div></div>";
     html += "<div><p class=\"sec-t\">追踪主题 <em>" + th.length + "</em></p>" + th.map(themeCard).join("") + "</div>";
     html += '<div><p class="sec-t">日程事件 <em>' + ev.length + '</em></p><div class="ev-list">' + ev.map(evRow).join("") + "</div></div>";
     var reviews = state.data.plans.filter(function (p) { return p.kind === "复盘"; });
@@ -620,12 +631,13 @@
     var theme = state.byId[e.theme[0]];
     var flags = [];
     if (e.status === "待发生") {
-      if (!e.expectation) flags.push('<span class="flag warn">预期未写 · 提醒 ' + mdShort(addDays(e.date, -2)) + "</span>");
+      if (!e.date) flags.push('<span class="flag warn">日期未定</span>');
+      else if (!e.expectation) flags.push('<span class="flag warn">预期未写 · 提醒 ' + mdShort(addDays(e.date, -2)) + "</span>");
       else flags.push('<span class="flag">已写预期</span>');
     }
     if (e.result) flags.push('<span class="flag">已补结果</span>');
     return '<div class="ev-row" data-id="' + e.id + '" tabindex="0">' +
-      '<div class="ev-date"><b>' + mdShort(e.date) + "</b><span>" + (e.dateEnd ? "至 " + mdShort(e.dateEnd) : e.date.slice(0, 4)) + "</span></div>" +
+      '<div class="ev-date"><b>' + mdShort(e.date) + "</b><span>" + (e.dateEnd ? "至 " + mdShort(e.dateEnd) : e.time ? e.time : e.date ? e.date.slice(0, 4) : "") + "</span></div>" +
       '<div class="ev-main"><b>' + esc(e.name) + "</b><small>" + (theme ? "所属主题：" + esc(theme.name) : "未挂主题") + "</small></div>" +
       '<div class="ev-flags">' + flags.join("") + pill(e.status) + (e.status === "待发生" ? '<span class="cd">' + rel(e.date) + "</span>" : "") + "</div></div>";
   }
@@ -721,11 +733,11 @@
         '<h2 class="d-title">' + esc(o.name) + "</h2>" +
         (o.hypothesis ? '<p class="d-quote" style="--tc:var(--c-purple)">' + esc(o.hypothesis) + "</p>" : "") +
         '<dl class="d-fields">' +
-        field(o.kind === "追踪主题" ? "下次复查" : "日期", o.date ? md(o.date) + (o.dateEnd ? " – " + md(o.dateEnd) : "") + "（" + rel(o.date) + "）" : "") +
+        field(o.kind === "追踪主题" ? "下次复查" : "日期", o.date ? md(o.date) + (o.time ? " " + o.time + "（新加坡时间）" : "") + (o.dateEnd ? " – " + md(o.dateEnd) : "") + " · " + rel(o.date) : "") +
         field("证实信号", esc(o.confirm)) + field("推翻信号", esc(o.refute)) +
         (isEv ? field("预期", o.expectation ? esc(o.expectation) : '<span class="flag warn">未写</span>') : "") +
         (isEv ? field("结果", o.result ? esc(o.result) : "—") : "") +
-        (isEv && o.status === "待发生" ? field("提醒", "写预期 " + md(addDays(o.date, -2)) + " 09:00 · 补结果 " + md(addDays(o.dateEnd || o.date, 1)) + " 09:00（新加坡）") : "") +
+        (isEv && o.status === "待发生" && o.date ? field("提醒", "写预期 " + md(addDays(o.date, -2)) + " 09:00 · 补结果 " + md(addDays(o.dateEnd || o.date, 1)) + " 09:00（新加坡）") : "") +
         field("判定", esc(o.verdict)) + field("主题标签", o.tags.length ? tagsHtml(o.tags) : "") + "</dl>" +
         linkGroup("所属主题", o.theme) + linkGroup("检验事件", o.events) + linkGroup("相关记录", o.records) +
         '<div class="d-actions"><a class="btn ghost" href="' + notionUrl(o.id) + '" target="_blank" rel="noopener">在 Notion 中打开 ↗</a></div>';
@@ -781,11 +793,20 @@
   bindTimeFilter();
   bindTimelinePan();
   load().then(function (data) {
-    state.data = data; index(data);
-    renderSource(); renderKPIs(); renderFilters(); renderFeed(); renderLegend(); renderEvents(); renderTimeFilter();
-    $("n-graph").textContent = graphData().nodes.filter(function (n) { return n.kind !== "tag"; }).length;
-    setView(location.hash.slice(1));
-  }).catch(function () {
+    try {
+      state.data = data; index(data);
+      renderSource(); renderKPIs(); renderFilters(); renderFeed(); renderLegend(); renderEvents(); renderTimeFilter();
+      $("n-graph").textContent = graphData().nodes.filter(function (n) { return n.kind !== "tag"; }).length;
+      setView(location.hash.slice(1));
+    } catch (err) {
+      // data arrived but something in it broke rendering: say so, rather than blaming the connection
+      console.error(err);
+      $("v-feed").hidden = false;
+      $("v-feed").innerHTML = '<div class="empty conn-err"><p><b>已经读到 Notion 数据，但页面显示时出错了。</b></p>' +
+        "<p>可能是 Notion 里有页面还不支持的数据格式。把下面这行错误信息发给开发者即可定位。</p>" +
+        '<p class="mono">' + esc(err && (err.stack || err.message) || err).split("\n").slice(0, 3).join(" · ") + "</p></div>";
+    }
+  }, function () {
     var b = (apiError && apiError.body) || {};
     var detail = [apiError && apiError.status ? "HTTP " + apiError.status : "", b.notionCode || "", b.error || ""].filter(Boolean).join(" · ");
     $("src").querySelector("span").textContent = "未连接 Notion";
