@@ -287,7 +287,7 @@ button{font:inherit;color:inherit}
   .views{grid-auto-flow:column;grid-auto-columns:1fr}
   .views a{justify-content:center;gap:8px}
   .filters{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
-  .side-foot{flex-direction:row;display:flex;justify-content:space-between}
+  .side-foot{flex-direction:row;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
   .main{padding:16px 16px 48px}
 }
 @media (max-width:640px){
@@ -326,7 +326,8 @@ button{font:inherit;color:inherit}
 .login-err{margin:0;font-size:13px;color:var(--c-red)}
 .login-btn{appearance:none;border:0;border-radius:8px;background:var(--ink);color:var(--surface);font:500 14px var(--sans);padding:11px 14px;cursor:pointer;margin-top:4px}
 .login-btn:disabled{opacity:.6;cursor:default}
-.login-note{margin:2px 0 0;font-size:12px;color:var(--muted);text-align:center}
+.login-note{margin:0;font-size:12px;color:var(--muted)}
+.login-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px}
 .logout{appearance:none;border:0;background:none;padding:0;color:var(--muted);font-size:12.5px;cursor:pointer;justify-self:start}
 .logout:hover{color:var(--ink)}
 
@@ -348,3 +349,12 @@ button{font:inherit;color:inherit}
 .g-tip b{font-weight:600;color:var(--ink)}
 .g-tip span{font-size:11.5px;color:var(--muted)}
 .g-link,.g-rings circle{vector-effect:non-scaling-stroke}
+
+/* appearance switch */
+.side-foot-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.theme-switch{display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:var(--sunk);justify-self:start;flex:none}
+.theme-switch button{appearance:none;border:0;background:transparent;width:28px;height:24px;border-radius:6px;color:var(--muted);cursor:pointer;display:grid;place-items:center;padding:0}
+.theme-switch button svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.theme-switch button:hover{color:var(--ink)}
+.theme-switch button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.g-tip em{font-style:normal;font-size:11.5px;color:var(--accent)}
