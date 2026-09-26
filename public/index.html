@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Aideas 信息台</title>
+<meta name="description" content="个人信息流看板：信息与灵感库、知识图谱、追踪主题与日程事件，数据来自 Notion。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side" aria-label="导航与筛选">
+    <a class="brand" href="#feed">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="7.5" fill="none"/><circle cx="12" cy="12" r="11" fill="none" opacity=".45"/></svg>
+      <span>Aideas <b>信息台</b></span>
+    </a>
+
+    <nav class="views" aria-label="视图">
+      <a href="#feed" data-view="feed"><span>信息流</span><em id="n-feed"></em></a>
+      <a href="#graph" data-view="graph"><span>知识图谱</span><em id="n-graph"></em></a>
+      <a href="#events" data-view="events"><span>主题与事件</span><em id="n-events"></em></a>
+      <a href="method"><span>方法论</span></a>
+    </nav>
+
+    <div class="filters" id="filters">
+      <div class="fgroup">
+        <p class="flabel">类型</p>
+        <div class="fchips" id="f-type"></div>
+      </div>
+      <div class="fgroup">
+        <p class="flabel">状态</p>
+        <div class="fchips" id="f-status"></div>
+      </div>
+      <div class="fgroup">
+        <p class="flabel">主题标签</p>
+        <div class="fchips" id="f-tag"></div>
+      </div>
+      <button class="reset" id="f-reset" type="button" hidden>清除筛选</button>
+    </div>
+
+    <div class="side-foot">
+      <p class="src" id="src"><i></i><span>加载中</span></p>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="top">
+      <div class="kpis" id="kpis"></div>
+      <label class="search">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l4 4"/></svg>
+        <input id="q" type="search" placeholder="搜索标题、小结、来源" autocomplete="off">
+      </label>
+    </header>
+
+    <section class="view" id="v-feed" aria-label="信息流"></section>
+    <section class="view" id="v-graph" aria-label="知识图谱" hidden>
+      <div class="tf-wrap">
+      <div class="timef" id="timef" role="group" aria-labelledby="tf-label">
+        <div class="timef-head">
+          <span class="flabel" id="tf-label">入库时间</span>
+          <span class="tf-sum" id="tf-sum"></span>
+          <button class="reset" id="tf-all" type="button">全部时间</button>
+        </div>
+        <div class="timef-row">
+          <input type="date" id="tf-from" aria-label="开始日期">
+          <div class="dual">
+            <div class="track"><div class="fill" id="tf-fill"></div></div>
+            <input type="range" id="tf-lo" min="0" max="0" step="1" value="0" aria-label="开始日期">
+            <input type="range" id="tf-hi" min="0" max="0" step="1" value="0" aria-label="结束日期">
+            <div class="ticks" id="tf-ticks" aria-hidden="true"></div>
+          </div>
+          <input type="date" id="tf-to" aria-label="结束日期">
+        </div>
+      </div>
+      <div class="daily" aria-labelledby="daily-label">
+        <div class="daily-h"><span class="flabel" id="daily-label">每日入库</span><span class="daily-max" id="daily-max"></span></div>
+        <div class="cal-scroll" id="cal-scroll">
+          <div class="cal" id="cal" aria-hidden="true"></div>
+        </div>
+        <div class="cal-foot">
+          <span><span class="hint-mouse">拖动选择日期范围</span><span class="hint-touch">长按后拖动选择范围</span></span>
+          <span class="cal-legend">少<i class="c l0"></i><i class="c l1"></i><i class="c l2"></i><i class="c l3"></i><i class="c l4"></i>多</span>
+        </div>
+      </div>
+      </div>
+      <div class="graph-bar">
+        <div class="legend" id="g-legend"></div>
+        <label class="toggle"><input type="checkbox" id="g-tags" checked> 显示标签节点</label>
+      </div>
+      <div class="graph" id="graph"></div>
+    </section>
+    <section class="view" id="v-events" aria-label="主题与事件" hidden></section>
+  </main>
+</div>
+
+<aside class="drawer" id="drawer" aria-label="详情" hidden>
+  <div class="drawer-in">
+    <button class="close" id="d-close" type="button" aria-label="关闭详情">×</button>
+    <div id="d-body"></div>
+  </div>
+</aside>
+<div class="scrim" id="scrim" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

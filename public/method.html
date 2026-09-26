@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Aideas 方法论</title>
+<meta name="description" content="信息台背后的用法：三个 Claude 技能怎么把信息记进 Notion、怎么盯事件、怎么复盘。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>
+.toc{display:grid;gap:2px}
+.toc a{padding:5px 10px;border-radius:6px;text-decoration:none;color:var(--muted);font-size:13px}
+.toc a:hover{background:var(--sunk);color:var(--ink)}
+.doc{max-width:980px;display:grid;gap:44px}
+.doc section{display:grid;gap:16px;scroll-margin-top:20px}
+.doc h1{margin:0;font:700 30px/1.3 var(--serif);text-wrap:balance}
+.doc h2{margin:0;font:700 22px/1.35 var(--serif)}
+.lead{margin:0;color:var(--ink-2);font-size:15px;max-width:62ch}
+.intro{display:grid;gap:10px}
+.panel{background:var(--surface);border-radius:12px;box-shadow:var(--shadow)}
+.muted{color:var(--muted)}
+.own{background:var(--accent-soft);color:var(--ink);padding:1px 5px;border-radius:4px}
+
+/* three beats */
+.beats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.beat{padding:18px 20px;display:grid;gap:8px;align-content:start;position:relative}
+.beat::before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:3px;border-radius:0 3px 3px 0;background:var(--bc)}
+.beat-h{display:flex;justify-content:space-between;align-items:baseline}
+.beat-h b{font:700 18px/1.3 var(--serif)}
+.beat-h span{font:500 12px var(--mono);color:var(--muted)}
+.beat p{margin:0;font-size:13.5px;color:var(--ink-2)}
+.beat code{font:500 12px var(--mono);color:var(--bc)}
+
+/* principles */
+.rules{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.rule{padding:16px 20px;display:grid;gap:6px;align-content:start}
+.rule h3{margin:0;font:600 15.5px/1.45 var(--sans)}
+.rule p{margin:0;font-size:13.5px;color:var(--ink-2)}
+.rule .eg{font-size:12.5px;color:var(--muted);border-top:1px dashed var(--line);padding-top:8px;margin-top:4px}
+
+/* structure */
+.struct{padding:18px;overflow-x:auto}
+.struct svg{display:block;min-width:720px;width:100%;height:auto}
+.struct text{font-family:var(--sans)}
+
+/* skills */
+.skill{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:0;overflow:hidden}
+.skill > div{padding:20px 22px;display:grid;gap:12px;align-content:start}
+.skill > div + div{background:var(--raised);border-left:1px solid var(--line)}
+.skill h3{margin:0;font:700 18px/1.35 var(--serif);display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.skill h3 code{font:500 12px var(--mono);color:var(--muted)}
+.skill p{margin:0;font-size:13.5px;color:var(--ink-2)}
+.steps{margin:0;padding:0;list-style:none;display:grid;gap:8px;counter-reset:s}
+.steps li{counter-increment:s;display:grid;grid-template-columns:22px 1fr;gap:8px;font-size:13.5px}
+.steps li::before{content:counter(s);font:600 11px/20px var(--mono);text-align:center;width:20px;height:20px;border-radius:50%;background:var(--sunk);color:var(--ink-2)}
+.says{display:flex;flex-wrap:wrap;gap:6px}
+.says span{font-size:12.5px;padding:2px 9px;border-radius:99px;border:1px solid var(--line-2);color:var(--ink-2)}
+.kicker{margin:0;font:600 11px/1 var(--mono);letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+.chat{display:grid;gap:8px}
+.msg{max-width:92%;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.6}
+.msg.u{justify-self:end;background:var(--ink);color:var(--surface);border-bottom-right-radius:3px}
+.msg.c{justify-self:start;background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:3px}
+.msg ul{margin:4px 0;padding-left:18px}
+.tl{display:grid;gap:0;position:relative;padding-left:20px}
+.tl::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:2px;background:var(--line-2)}
+.tl div{position:relative;padding-bottom:12px;font-size:13px}
+.tl div:last-child{padding-bottom:0}
+.tl div::before{content:"";position:absolute;left:-19px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--surface);border:2px solid var(--c-blue)}
+.tl div.rem::before{background:var(--c-yellow);border-color:var(--c-yellow)}
+.tl div.ev::before{background:var(--c-blue)}
+.tl b{display:block;font-weight:600}
+.tl small{font:500 11.5px var(--mono);color:var(--accent)}
+.tl span{color:var(--muted)}
+.rv{display:grid;gap:0;margin:0;padding:0;list-style:none;counter-reset:r}
+.rv li{counter-increment:r;display:grid;grid-template-columns:22px 1fr;gap:8px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.rv li::before{content:counter(r);font:500 11px/20px var(--mono);color:var(--muted)}
+.rv li:last-child{border-bottom:0}
+.rv b{font-weight:600}
+.rv span{color:var(--muted)}
+
+/* lifecycle */
+.lcs{display:grid;gap:10px}
+.lc{display:grid;grid-template-columns:170px 1fr;gap:18px;align-items:center;padding:14px 20px}
+.lc h3{margin:0;font-size:14.5px;font-weight:600}
+.lc small{font:500 11px var(--mono);color:var(--muted)}
+.flow{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.flow .arr{font:500 12px var(--mono);color:var(--muted)}
+.flow .arr em{font-style:normal;color:var(--accent)}
+.flow .note{flex-basis:100%;font-size:12.5px;color:var(--muted);margin-top:2px}
+.st{font-size:12.5px;padding:3px 10px;border-radius:99px;background:color-mix(in srgb,var(--pc) 14%,transparent);color:var(--pc);font-weight:500;white-space:nowrap}
+
+/* fields */
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fields .panel{overflow-x:auto}
+.fields h3{margin:0;padding:14px 18px;font:700 16px var(--serif);border-bottom:1px solid var(--line)}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:380px}
+td{padding:8px 18px;border-top:1px solid var(--line);vertical-align:top}
+tr:first-child td{border-top:0}
+td:first-child{white-space:nowrap;font-weight:500;width:1%}
+td:last-child{color:var(--muted)}
+
+@media (max-width:980px){.toc{display:none}}
+@media (max-width:860px){
+  .beats,.rules,.fields{grid-template-columns:1fr}
+  .skill{grid-template-columns:1fr}
+  .skill > div + div{border-left:0;border-top:1px solid var(--line)}
+  .lc{grid-template-columns:1fr;gap:8px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side" aria-label="导航">
+    <a class="brand" href="/">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="7.5" fill="none"/><circle cx="12" cy="12" r="11" fill="none" opacity=".45"/></svg>
+      <span>Aideas <b>信息台</b></span>
+    </a>
+    <nav class="views" aria-label="视图">
+      <a href="/#feed"><span>信息流</span></a>
+      <a href="/#graph"><span>知识图谱</span></a>
+      <a href="/#events"><span>主题与事件</span></a>
+      <a href="method" aria-current="page"><span>方法论</span></a>
+    </nav>
+    <nav class="toc" aria-label="本页目录">
+      <p class="flabel">本页</p>
+      <a href="#overview">三个环节</a>
+      <a href="#rules">几条规矩</a>
+      <a href="#structure">两个库</a>
+      <a href="#skills">三个技能</a>
+      <a href="#lifecycle">状态怎么变</a>
+      <a href="#fields">字段</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="doc">
+
+      <section id="overview">
+        <div class="intro">
+          <p class="kicker">方法论</p>
+          <h1>平时只管记，判断留到复盘</h1>
+          <p class="lead">信息台里的数据由三个 Claude 技能写进 Notion。它们分工很简单：看到东西随手记，有日程的事件按提醒跟，隔一段时间统一复盘，决定哪些继续跟、哪些放掉。</p>
+        </div>
+        <div class="beats">
+          <div class="beat panel" style="--bc:var(--t-info)">
+            <div class="beat-h"><b>记</b><span>随时</span></div>
+            <p>说「记进库里」。Claude 先问你一句话结论，再存进信息库。</p>
+            <code>notion-info-vault</code>
+          </div>
+          <div class="beat panel" style="--bc:var(--c-blue)">
+            <div class="beat-h"><b>盯事件</b><span>按日程</span></div>
+            <p>事件前两天提醒你写预期，事件后第二天提醒你补结果。</p>
+            <code>plan-event-tracker</code>
+          </div>
+          <div class="beat panel" style="--bc:var(--c-purple)">
+            <div class="beat-h"><b>复盘</b><span>不定期</span></div>
+            <p>说「复盘」。Claude 汇总这段时间的记录和事件，你来决定怎么处理。</p>
+            <code>periodic-review</code>
+          </div>
+        </div>
+      </section>
+
+      <section id="rules">
+        <h2>几条规矩</h2>
+        <div class="rules">
+          <article class="rule panel">
+            <h3>小结自己写</h3>
+            <p>入库前 Claude 会先问你「这段你得出了什么结论」，你的原话照抄进「一句话小结」，不润色。懒得写就空着，复盘时再补，不会拿 Claude 的总结顶上。</p>
+            <p class="eg">原因：先看了 AI 的总结，人很容易顺着它想，复盘时也分不清哪些是自己的判断。</p>
+          </article>
+          <article class="rule panel">
+            <h3>记的时候不做决定</h3>
+            <p>新记录一律是「待处理」。值不值得跟进、要不要归档或放弃，都等复盘时再说。</p>
+            <p class="eg">这样记一条只要几秒钟，不会因为要想清楚而拖着不记。</p>
+          </article>
+          <article class="rule panel">
+            <h3>预期必须在事件前写</h3>
+            <p>事件发生后才写的「预期」不算数，只能记成结果，并注明没有事前预期。</p>
+            <p class="eg">例：CPI 公布后再写「我本来就觉得会高」，这条没有参考价值。</p>
+          </article>
+          <article class="rule panel">
+            <h3>决策看理由，不看赚没赚</h3>
+            <p>回看一笔操作时，只判断当初的理由有没有应验：理由成立 / 部分成立 / 理由不成立。盈亏另外写。</p>
+            <p class="eg">例：赚了钱，但涨的原因跟你当初想的不一样，那就是「理由不成立」。</p>
+          </article>
+          <article class="rule panel">
+            <h3>猜错了也要结案</h3>
+            <p>追踪主题有了结论就结案，结论可以是「推翻」。只有不了了之的才记「已放弃」。</p>
+            <p class="eg">猜错的记录最能告诉你自己哪类判断不靠谱，别把它们藏进「放弃」里。</p>
+          </article>
+          <article class="rule panel">
+            <h3>同时跟的东西别太多</h3>
+            <p>追踪主题同时保持 3–5 个。「跟进中」的记录越积越多时，复盘会提醒你砍掉一些。</p>
+            <p class="eg">跟进中的每一条，都意味着你真要花时间去做它的「下一步」。</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="structure">
+        <h2>两个库，互相关联</h2>
+        <p class="lead">「信息与灵感库」放读到的、想到的、做过的操作；「计划与关注」放你在跟踪的判断（追踪主题）和用来检验它们的事件。</p>
+        <div class="struct panel">
+          <svg viewBox="0 0 860 300" role="img" aria-labelledby="st-t">
+            <title id="st-t">信息与灵感库和计划与关注两个数据库之间的关联字段</title>
+            <defs>
+              <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--accent)"/></marker>
+              <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--c-orange)"/></marker>
+              <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--c-purple)"/></marker>
+            </defs>
+            <rect x="20" y="20" width="300" height="200" rx="10" style="fill:var(--raised);stroke:var(--line-2)"/>
+            <text x="40" y="52" font-size="16" font-weight="700" style="fill:var(--ink)">信息与灵感库</text>
+            <circle cx="48" cy="84" r="6" style="fill:var(--t-info)"/><text x="62" y="89" font-size="13" style="fill:var(--ink-2)">信息流：读到的文章、研报、新闻</text>
+            <circle cx="48" cy="112" r="6" style="fill:var(--t-idea)"/><text x="62" y="117" font-size="13" style="fill:var(--ink-2)">灵感：和 AI 讨论出的想法</text>
+            <circle cx="48" cy="140" r="6" style="fill:var(--t-decision)"/><text x="62" y="145" font-size="13" style="fill:var(--ink-2)">决策：做过的操作和理由</text>
+            <text x="40" y="182" font-size="12" style="fill:var(--muted)">每条都有：一句话小结 · 下一步 · 状态</text>
+
+            <rect x="540" y="20" width="300" height="200" rx="10" style="fill:var(--raised);stroke:var(--line-2)"/>
+            <text x="560" y="52" font-size="16" font-weight="700" style="fill:var(--ink)">计划与关注</text>
+            <circle cx="568" cy="84" r="6" style="fill:var(--c-purple)"/><text x="582" y="89" font-size="13" style="fill:var(--ink-2)">追踪主题：假设 + 证实/推翻信号</text>
+            <rect x="562" y="106" width="12" height="12" transform="rotate(45 568 112)" style="fill:var(--c-blue)"/><text x="582" y="117" font-size="13" style="fill:var(--ink-2)">日程事件：预期 + 结果</text>
+            <circle cx="568" cy="140" r="6" style="fill:var(--c-gray)"/><text x="582" y="145" font-size="13" style="fill:var(--ink-2)">复盘：每次复盘留一条</text>
+            <text x="560" y="182" font-size="12" style="fill:var(--muted)">主题的「日期」= 下次复查日</text>
+
+            <path d="M320 110 H540" style="stroke:var(--c-orange);stroke-width:1.6;stroke-dasharray:5 4;fill:none" marker-start="url(#a2)" marker-end="url(#a2)"/>
+            <text x="430" y="100" text-anchor="middle" font-size="12.5" style="fill:var(--c-orange)">相关计划 ⇄ 相关记录</text>
+            <text x="430" y="130" text-anchor="middle" font-size="11.5" style="fill:var(--muted)">这条信息和哪个主题/事件有关</text>
+
+            <path d="M110 220 C110 275, 230 275, 230 222" style="stroke:var(--accent);stroke-width:1.6;fill:none" marker-end="url(#a1)"/>
+            <text x="170" y="290" text-anchor="middle" font-size="12.5" style="fill:var(--accent)">衍生自 ⇄ 衍生出</text>
+            <path d="M630 220 C630 275, 750 275, 750 222" style="stroke:var(--c-purple);stroke-width:1.6;fill:none" marker-end="url(#a3)"/>
+            <text x="690" y="290" text-anchor="middle" font-size="12.5" style="fill:var(--c-purple)">所属主题 ⇄ 检验事件</text>
+          </svg>
+        </div>
+      </section>
+
+      <section id="skills">
+        <h2>三个技能</h2>
+
+        <article class="skill panel">
+          <div>
+            <h3>记进库里 <code>notion-info-vault</code></h3>
+            <p>把一段讨论或一篇文章存进信息库。关键是小结由你来写。</p>
+            <ol class="steps">
+              <li>Claude 问你一句话结论，不先给自己的版本</li>
+              <li>你说完，Claude 补充或反驳两三点，并草拟「下一步」</li>
+              <li>你确认后写入 Notion，状态设为「待处理」</li>
+              <li>如果是某条旧记录的后续，挂上「衍生自」；明显属于某个主题的，挂上「相关计划」</li>
+            </ol>
+            <div class="says"><span>记进库里</span><span>存进信息库</span><span>归档这次讨论</span><span>这是 XX 那条的后续</span></div>
+          </div>
+          <div>
+            <p class="kicker">一次入库对话（示例）</p>
+            <div class="chat">
+              <div class="msg u">记进库里</div>
+              <div class="msg c">用一两句话说说你从这段讨论里带走的结论？怎么粗糙都行。</div>
+              <div class="msg u">AI完成人的去工具化后，真实的表达才能建立优势。因此后续版本一句话总结需要用户手动输入。</div>
+              <div class="msg c">两点补充：
+                <ul><li>「真实的表达」可以更具体：是指结论由自己得出，还是指文字由自己写？</li>
+                <li>可以加一个观察指标：库里有多少条小结推翻或修正了 AI 的结论。</li></ul>
+                要改吗？下一步我草拟为：按新规则运行，四周后评估。</div>
+              <div class="msg u">就这样。</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="skill panel">
+          <div>
+            <h3>计划事件 <code>plan-event-tracker</code></h3>
+            <p>只处理跟时间有关的事：加事件、写预期、补结果、改期或取消。</p>
+            <ol class="steps">
+              <li>用网络搜索核实官方日期，按新加坡时间记录</li>
+              <li>挂到一个进行中的追踪主题；找不到合适的就问你，不会为了挂靠新建主题</li>
+              <li>自动建两个提醒：写预期、补结果</li>
+              <li>事件改期，提醒跟着改；事件取消，提醒一并删除</li>
+            </ol>
+            <div class="says"><span>把下周 CPI 加进计划</span><span>写个预期</span><span>补一下结果</span><span>XX 改期了</span></div>
+          </div>
+          <div>
+            <p class="kicker">一个事件的时间线（以 APEC 为例）</p>
+            <div class="tl">
+              <div><small>9/25</small><b>加事件</b><span>APEC 深圳，挂到「中美：休战期内能否达成长期协议」</span></div>
+              <div class="rem"><small>11/16 09:00</small><b>写预期提醒</b><span>Claude 整理主题假设和最新动态，请你写下预期</span></div>
+              <div class="ev"><small>11/18–11/19</small><b>APEC 领导人会议</b><span>48 小时内才加的事件，不设提醒，当场问你</span></div>
+              <div class="rem"><small>11/20 09:00</small><b>补结果提醒</b><span>Claude 搜索实际结果，对照你的预期，确认后写入</span></div>
+              <div><small>下次复盘</small><b>兜底</b><span>过了日期还没补结果的事件，会排在复盘摘要最前面</span></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="skill panel">
+          <div>
+            <h3>复盘 <code>periodic-review</code></h3>
+            <p>唯一做判断的环节。Claude 负责汇总和给建议，决定都由你做。</p>
+            <ol class="steps">
+              <li>从上一次复盘开始算区间；第一次默认过去 7 天</li>
+              <li>Claude 生成一屏左右的摘要，最后问你三个问题</li>
+              <li>你回答几句，Claude 只改你明确说了的东西</li>
+              <li>在计划库留一条「复盘 YYYY-MM-DD」，作为下次的起点</li>
+            </ol>
+            <div class="says"><span>复盘</span><span>回顾一下</span><span>回顾过去两周</span><span>只有 10 分钟</span></div>
+          </div>
+          <div>
+            <p class="kicker">摘要里有什么</p>
+            <ol class="rv">
+              <li><div><b>主题信号</b> <span>最近反复出现的方向</span></div></li>
+              <li><div><b>待处理分拣</b> <span>每条给建议：跟进 / 归档 / 放弃</span></div></li>
+              <li><div><b>跟进中检查</b> <span>下一步做了没有，停滞的建议降级</span></div></li>
+              <li><div><b>决策回看</b> <span>回看日到了的操作，核实理由是否应验</span></div></li>
+              <li><div><b>事件回看</b> <span>漏补的结果、预期 vs 实际</span></div></li>
+              <li><div><b>接下来的事件</b> <span>哪些还没写预期</span></div></li>
+              <li><div><b>该复查的主题</b> <span>检验事件都过了的，问要不要结案</span></div></li>
+            </ol>
+            <p class="muted" style="font-size:12.5px">最后三个问题：什么反复出现、值得追踪？什么改变了你的看法？接下来带着什么问题看信息？</p>
+          </div>
+        </article>
+      </section>
+
+      <section id="lifecycle">
+        <h2>状态怎么变</h2>
+        <p class="lead">记的时候只会出现「待处理」和「待发生」。其他状态变化都发生在复盘或事件提醒里，并且由你确认。</p>
+        <div class="lcs">
+          <div class="lc panel">
+            <div><h3>信息 / 灵感</h3><small>信息与灵感库</small></div>
+            <div class="flow">
+              <span class="st" style="--pc:var(--c-red)">待处理</span><span class="arr">复盘 →</span>
+              <span class="st" style="--pc:var(--c-yellow)">跟进中</span><span class="arr">做完 →</span>
+              <span class="st" style="--pc:var(--c-green)">已归档</span><span class="arr">或</span>
+              <span class="st" style="--pc:var(--c-gray)">已放弃</span>
+            </div>
+          </div>
+          <div class="lc panel">
+            <div><h3>决策</h3><small>信息与灵感库</small></div>
+            <div class="flow">
+              <span class="st" style="--pc:var(--c-red)">待处理</span><span class="arr">复盘 →</span>
+              <span class="st" style="--pc:var(--c-yellow)">跟进中</span><span class="arr">到回看日 →</span>
+              <span class="st" style="--pc:var(--c-green)">已归档</span>
+              <span class="note">归档时填判定：理由成立 / 部分成立 / 理由不成立</span>
+            </div>
+          </div>
+          <div class="lc panel">
+            <div><h3>追踪主题</h3><small>计划与关注</small></div>
+            <div class="flow">
+              <span class="st" style="--pc:var(--c-yellow)">进行中</span><span class="arr">有结论 →</span>
+              <span class="st" style="--pc:var(--c-green)">已完成</span><span class="arr">没结论 →</span>
+              <span class="st" style="--pc:var(--c-gray)">已放弃</span>
+              <span class="note">已完成要填判定：证实 / 部分成立 / 推翻。名下没发生的事件要逐个取消或改挂。</span>
+            </div>
+          </div>
+          <div class="lc panel">
+            <div><h3>日程事件</h3><small>计划与关注</small></div>
+            <div class="flow">
+              <span class="st" style="--pc:var(--c-blue)">待发生</span><span class="arr">补结果 →</span>
+              <span class="st" style="--pc:var(--c-green)">已完成</span><span class="arr">取消 →</span>
+              <span class="st" style="--pc:var(--c-gray)">已放弃</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="fields">
+        <h2>字段</h2>
+        <div class="fields">
+          <div class="panel">
+            <h3>信息与灵感库</h3>
+            <table>
+              <tr><td>标题</td><td>Claude 起，说明这条是关于什么的</td></tr>
+              <tr><td>类型</td><td>信息流 / 灵感 / 决策</td></tr>
+              <tr><td><span class="own">一句话小结</span></td><td>你的原话</td></tr>
+              <tr><td>下一步</td><td>入库时打算做什么；「无」和空着不一样</td></tr>
+              <tr><td>状态</td><td>待处理 / 跟进中 / 已归档 / 已放弃</td></tr>
+              <tr><td>主题标签</td><td>和计划库共用一套</td></tr>
+              <tr><td>来源 · 链接</td><td>媒体名、研报，或「与 Claude 的讨论」</td></tr>
+              <tr><td>衍生自 / 衍生出</td><td>这条是从哪条引出来的</td></tr>
+              <tr><td>相关计划</td><td>关联的主题或事件</td></tr>
+              <tr><td>标的 · 动作 · 回看日 · 判定</td><td>决策专用</td></tr>
+            </table>
+          </div>
+          <div class="panel">
+            <h3>计划与关注</h3>
+            <table>
+              <tr><td>名称</td><td>复盘记录叫「复盘 YYYY-MM-DD」</td></tr>
+              <tr><td>类型</td><td>追踪主题 / 日程事件 / 复盘</td></tr>
+              <tr><td>日期</td><td>主题填下次复查日，事件填发生日</td></tr>
+              <tr><td>状态</td><td>进行中 / 待发生 / 已完成 / 已放弃</td></tr>
+              <tr><td><span class="own">假设</span></td><td>你相信什么；改过的话旧版本要留在正文</td></tr>
+              <tr><td>证实 / 推翻信号</td><td>看到什么算对、算错</td></tr>
+              <tr><td><span class="own">预期</span></td><td>事件前写</td></tr>
+              <tr><td>结果</td><td>实际发生了什么，对假设意味着什么</td></tr>
+              <tr><td>判定</td><td>主题结案用：证实 / 部分成立 / 推翻</td></tr>
+              <tr><td>所属主题 / 检验事件</td><td>事件和主题互相关联</td></tr>
+            </table>
+          </div>
+        </div>
+        <p class="muted" style="font-size:12.5px;margin:0">高亮的字段只能由你本人填写。</p>
+      </section>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>
