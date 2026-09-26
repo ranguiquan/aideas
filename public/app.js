@@ -344,7 +344,7 @@
       .attr("markerWidth", 7).attr("markerHeight", 7).attr("orient", "auto")
       .append("path").attr("d", "M0 0L10 5L0 10z").style("fill", "var(--accent)");
     var root = svg.append("g");
-    var zoom = d3.zoom().scaleExtent([0.4, 3]).on("zoom", function (e) { state.zoom = e.transform; root.attr("transform", e.transform); });
+    var zoom = d3.zoom().scaleExtent([0.4, 3]).on("zoom", function (e) { state.zoom = e.transform; root.attr("transform", e.transform); scheduleLabels(); });
     svg.call(zoom);
     if (state.zoom) svg.call(zoom.transform, state.zoom);
 
@@ -358,11 +358,13 @@
       .attr("tabindex", function (d) { return d.kind === "tag" ? null : 0; })
       .on("click", function (e, d) { if (d.kind === "tag") toggleTag(d.id.slice(4)); else openDetail(d.id); })
       .on("keydown", function (e, d) { if (e.key === "Enter" && d.kind !== "tag") openDetail(d.id); })
-      .on("mouseenter", function (e, d) { highlight(d); })
-      .on("mouseleave", function () { highlight(null); })
+      .on("mouseenter", function (e, d) { highlight(d); showTip(e, d); })
+      .on("mousemove", function (e) { moveTip(e); })
+      .on("mouseleave", function () { highlight(null); hideTip(); })
       .call(d3.drag()
         .on("start", function (e, d) {
           d._sx = e.x; d._sy = e.y; d._moved = false;
+          hideTip();
           if (!e.active) sim.alphaTarget(0.25).restart();
           d.fx = d.x; d.fy = d.y;
         })
@@ -397,7 +399,7 @@
         s.append("circle").attr("class", "shape").attr("r", r).style("fill", d.color).style("stroke", "var(--surface)").style("stroke-width", 2);
         if (d.kind === "record" && d.ref.status === "待处理") s.append("circle").attr("r", 3).attr("cx", r * 0.75).attr("cy", -r * 0.75).style("fill", "var(--c-red)").style("stroke", "var(--surface)").style("stroke-width", 1.5);
       }
-      s.append("text").attr("x", r + 7).attr("y", 4).text(d.kind === "tag" ? d.label : trunc(d.label, 13));
+      s.append("text").attr("class", "lbl").attr("x", r + 7).attr("dy", "0.35em").text(d.kind === "tag" ? d.label : trunc(d.label, 18));
     });
 
     var adj = {};
@@ -406,6 +408,81 @@
       node.classed("dim", function (n) { return d && n.id !== d.id && !adj[d.id + "|" + n.id]; });
       link.classed("dim", function (l) { return d && l.source.id !== d.id && l.target.id !== d.id; });
     }
+
+    // ----- labels: keep them readable -----
+    // Text keeps the same on-screen size while zooming; after each layout change labels are placed greedily
+    // by priority, facing away from the centre, and any label that would overlap a placed label or another
+    // node is hidden (the hover card still shows the full title). Zooming in frees space, so more appear.
+    var focusC = null, labelFrame = 0, tickCount = 0;
+    node.each(function (d) { d._w = this.querySelector("text.lbl").getComputedTextLength(); });   // width at k = 1
+    var degree = {};
+    g.links.forEach(function (l) {
+      var s = l.source.id || l.source, t = l.target.id || l.target;
+      degree[s] = (degree[s] || 0) + 1; degree[t] = (degree[t] || 0) + 1;
+    });
+    function labelPriority(d) {
+      if (state.focusId) {
+        if (d.id === state.focusId) return 1000;
+        var h = d._hop === undefined ? 9 : d._hop;
+        return 600 - h * 100 + (d.kind === "theme" ? 30 : d.kind === "record" ? 20 : 0);
+      }
+      var base = d.kind === "theme" ? 300 : d.kind === "record" ? 200 : d.kind === "event" ? 150 : 100;
+      return base + (degree[d.id] || 0) * 5;
+    }
+    function layoutLabels() {
+      var k = state.zoom ? state.zoom.k : 1, c = focusC || viewCenter();
+      var h = 14 / k, gap = 6 / k, placed = [];
+      function hits(b) {
+        for (var i = 0; i < placed.length; i++) {
+          var p = placed[i];
+          if (b[0] < p[0] + p[2] && b[0] + b[2] > p[0] && b[1] < p[1] + p[3] && b[1] + b[3] > p[1]) return true;
+        }
+        return false;
+      }
+      // every node's own shape is an obstacle for other nodes' labels
+      g.nodes.forEach(function (d) { var r = nodeR(d) + 1; placed.push([d.x - r, d.y - r, r * 2, r * 2, d.id]); });
+      var order = g.nodes.slice().sort(function (a, b) { return labelPriority(b) - labelPriority(a); });
+      // visible area in graph coordinates, so labels never run off the canvas
+      var tl = state.zoom ? state.zoom.invert([0, 0]) : [0, 0], br = state.zoom ? state.zoom.invert([W, H]) : [W, H];
+      function inView(b) { return b[0] >= tl[0] + 4 / k && b[0] + b[2] <= br[0] - 4 / k && b[1] >= tl[1] && b[1] + b[3] <= br[1]; }
+      order.forEach(function (d) {
+        var off = nodeR(d) + gap, w = d._w / k, outward = d.x >= c[0] ? 1 : -1;
+        var own = placed.filter(function (p) { return p[4] === d.id; });
+        placed = placed.filter(function (p) { return p[4] !== d.id; });   // a label may touch its own node
+        // try facing away from the centre first, then the other side; hide only if neither fits
+        d._hideLabel = true; d._off = off; d._side = outward;
+        [outward, -outward].some(function (side) {
+          var box = side > 0 ? [d.x + off, d.y - h / 2, w, h] : [d.x - off - w, d.y - h / 2, w, h];
+          if (!inView(box) || hits(box)) return false;
+          d._side = side; d._hideLabel = false; placed.push(box);
+          return true;
+        });
+        placed = placed.concat(own);
+      });
+      node.classed("nolabel", function (d) { return d._hideLabel; });
+      node.select("text.lbl")
+        .style("font-size", (11.5 / k) + "px").style("stroke-width", (4 / k) + "px")
+        .attr("x", function (d) { return d._side * d._off; })
+        .attr("text-anchor", function (d) { return d._side > 0 ? "start" : "end"; });
+    }
+    function scheduleLabels() {
+      if (labelFrame) return;
+      labelFrame = requestAnimationFrame(function () { labelFrame = 0; layoutLabels(); });
+    }
+
+    // hover card with the full title
+    var tip = d3.select(box).append("div").attr("class", "g-tip").attr("hidden", true);
+    function showTip(e, d) {
+      if (d3.select(e.currentTarget).classed("dragging")) return;
+      var o = d.ref || {}, meta = d.kind === "tag" ? "标签" : o._kind === "record" ? [o.type, o.status].filter(Boolean).join(" · ") : [o.kind, o.status, o.date ? md(o.date) : ""].filter(Boolean).join(" · ");
+      tip.html("<b>" + esc(d.kind === "tag" ? d.label : d.label) + "</b>" + (meta ? "<span>" + esc(meta) + "</span>" : "")).attr("hidden", null);
+      moveTip(e);
+    }
+    function moveTip(e) {
+      var p = d3.pointer(e, box), bw = box.clientWidth, tw = tip.node().offsetWidth;
+      tip.style("left", Math.min(p[0] + 14, bw - tw - 8) + "px").style("top", (p[1] + 16) + "px");
+    }
+    function hideTip() { tip.attr("hidden", true); }
 
     // ----- focus mode: radial layout by hop distance from one node -----
     var nbrs = {};
@@ -440,6 +517,7 @@
         .attr("data-hop", function (n) { return n._hop === undefined ? "far" : Math.min(n._hop, DEEPEST); });
       link.classed("far", function (l) { var a = l.source._hop, b = l.target._hop; return a === undefined || b === undefined || Math.max(a, b) >= DEEPEST; });
       drawRings(cx, cy);
+      focusC = [cx, cy];
       $("g-reset").hidden = false;
     }
     function focusOn(d) {
@@ -455,6 +533,7 @@
       var r = sim.force("radial");
       if (r) { r.x(x).y(y); }
       drawRings(x, y);
+      focusC = [x, y];
     }
     function glideToCenter(d) {
       var c = viewCenter(), fx = d.fx, fy = d.fy, dur = 550;
@@ -474,6 +553,7 @@
       node.classed("focus", false).attr("data-hop", null);
       link.classed("far", false);
       rings.selectAll("circle").remove();
+      focusC = null;
       $("g-reset").hidden = true;
       sim.alpha(0.8).restart();
     };
@@ -493,12 +573,17 @@
         });
         node.attr("transform", function (d) { return "translate(" + d.x + "," + d.y + ")"; });
       })
-      .on("tick.pos", function () { g.nodes.forEach(function (n) { state.pos[n.id] = { x: n.x, y: n.y }; }); });
+      .on("tick.pos", function () {
+        g.nodes.forEach(function (n) { state.pos[n.id] = { x: n.x, y: n.y }; });
+        if (++tickCount % 4 === 0) scheduleLabels();
+      })
+      .on("end", layoutLabels);
     // keep the chosen centre across re-renders (filters, resize)
     var fd = state.focusId && g.nodes.find(function (n) { return n.id === state.focusId; });
     if (fd) { var c0 = viewCenter(); fd.fx = c0[0]; fd.fy = c0[1]; applyFocus(fd, c0[0], c0[1]); }
     else { state.focusId = null; $("g-reset").hidden = true; }
-    d3.select(box).append("p").attr("class", "g-hint").text("拖动任一节点，以它为中心重新排版 · 滚轮缩放 · 点击查看详情");
+    layoutLabels();
+    d3.select(box).append("p").attr("class", "g-hint").text("拖动任一节点，以它为中心重新排版 · 放大可显示更多名称 · 悬停看全名 · 点击查看详情");
   }
 
   // ---------- time range filter (graph) ----------
