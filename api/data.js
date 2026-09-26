@@ -43,7 +43,14 @@ async function queryAll(dataSourceId, token) {
       },
       body: JSON.stringify(cursor ? { start_cursor: cursor, page_size: 100 } : { page_size: 100 }),
     });
-    if (!res.ok) throw new Error(`Notion ${res.status}: ${await res.text()}`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const err = new Error(body.message || `Notion API returned ${res.status}`);
+      err.notionStatus = res.status;
+      err.notionCode = body.code;
+      err.dataSource = dataSourceId;
+      throw err;
+    }
     const json = await res.json();
     pages.push(...json.results);
     cursor = json.has_more ? json.next_cursor : undefined;
@@ -99,7 +106,7 @@ function toPlan(p) {
 }
 
 module.exports = async (req, res) => {
-  const token = process.env.NOTION_TOKEN;
+  const token = (process.env.NOTION_TOKEN || "").trim();
   if (!token) {
     res.status(503).json({ error: "NOTION_TOKEN is not configured" });
     return;
@@ -111,6 +118,12 @@ module.exports = async (req, res) => {
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=3600");
     res.status(200).json({ source: "live", generatedAt: new Date().toISOString(), records, plans });
   } catch (err) {
-    res.status(502).json({ error: String(err.message || err) });
+    console.error("[api/data]", err.notionStatus, err.notionCode, err.dataSource, err.message);
+    res.status(502).json({
+      error: String(err.message || err),
+      notionStatus: err.notionStatus || null,
+      notionCode: err.notionCode || null,
+      dataSource: err.dataSource || null,
+    });
   }
 };

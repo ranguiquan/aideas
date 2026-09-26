@@ -48,12 +48,36 @@
   }
 
   // ---------- data ----------
+  // Why /api/data failed, kept so the "not connected" screen can say what to fix.
+  var apiError = null;
+
   function load() {
     var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 8000);
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 15000);
     return fetch("/api/data", ctrl ? { signal: ctrl.signal } : {})
-      .then(function (r) { clearTimeout(timer); if (!r.ok) throw new Error(r.status); return r.json(); })
-      .catch(function () { return fetch("data/snapshot.json").then(function (r) { return r.json(); }); });
+      .then(function (r) {
+        clearTimeout(timer);
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          if (!r.ok || !j.records) throw { status: r.status, body: j };
+          return j;
+        });
+      })
+      .catch(function (e) {
+        apiError = e && e.name === "AbortError" ? { status: 0, body: { error: "请求超时（15 秒）" } }
+          : e && e.status !== undefined ? e : { status: 0, body: { error: String(e && e.message || e) } };
+        return fetch("data/snapshot.json").then(function (r) { if (!r.ok) throw new Error("no snapshot"); return r.json(); });
+      });
+  }
+
+  function apiErrorHint(e) {
+    var b = (e && e.body) || {}, code = b.notionCode, st = e && e.status;
+    if (st === 404) return "没有找到 <code>/api/data</code> 接口。本地用 <code>npx serve</code> 预览时这是正常的；线上出现说明 <code>api/</code> 目录没有被部署，检查 Vercel 项目的 Root Directory 是否为 <code>./</code>。";
+    if (st === 503) return "这次部署读不到 <code>NOTION_TOKEN</code>。检查环境变量是否勾选了当前环境（Preview 部署需要勾 <b>Preview</b>），以及添加变量之后是否 Redeploy 过——已有的部署不会自动拿到新变量。";
+    if (code === "unauthorized") return "Notion 拒绝了这个 token（无效或已被重置）。重新复制 integration 的 secret，更新 Vercel 环境变量后 Redeploy。";
+    if (code === "object_not_found") return "token 有效，但 integration 看不到这个数据库（" + esc(b.dataSource || "") + "）。在 Notion 里打开「信息与灵感库」和「计划与关注」，右上角 <code>···</code> → Connections，两个都要添加这个 integration。如果用的是自己的数据库，还要设置 <code>NOTION_INFO_DS</code> / <code>NOTION_PLAN_DS</code>。";
+    if (code === "restricted_resource") return "integration 没有读取权限。在 Notion integration 设置里勾选 <b>Read content</b>。";
+    if (code === "validation_error" || code === "invalid_request_url") return "Notion 不接受这个请求，通常是数据源 ID 写错了。检查 <code>NOTION_INFO_DS</code> / <code>NOTION_PLAN_DS</code>（只填 ID，不要带 <code>collection://</code>）。";
+    return "在 Vercel 项目的 Environment Variables 中添加 <code>NOTION_TOKEN</code>，在 Notion 里把两个数据库连接到这个 integration，然后 Redeploy。";
   }
 
   function index(data) {
@@ -762,9 +786,11 @@
     $("n-graph").textContent = graphData().nodes.filter(function (n) { return n.kind !== "tag"; }).length;
     setView(location.hash.slice(1));
   }).catch(function () {
+    var b = (apiError && apiError.body) || {};
+    var detail = [apiError && apiError.status ? "HTTP " + apiError.status : "", b.notionCode || "", b.error || ""].filter(Boolean).join(" · ");
     $("src").querySelector("span").textContent = "未连接 Notion";
-    $("v-feed").innerHTML = '<div class="empty"><p><b>还没有连接 Notion。</b></p>' +
-      "<p>在 Vercel 项目的 Environment Variables 中添加 <code>NOTION_TOKEN</code>（Notion Internal Integration 的 secret），" +
-      "并在 Notion 里把「信息与灵感库」「计划与关注」两个数据库连接到这个 integration，然后重新部署。</p></div>";
+    $("v-feed").innerHTML = '<div class="empty conn-err"><p><b>没有连上 Notion。</b></p>' +
+      "<p>" + apiErrorHint(apiError) + "</p>" +
+      (detail ? '<p class="mono">' + esc(detail) + "</p>" : "") + "</div>";
   });
 })();

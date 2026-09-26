@@ -305,3 +305,7 @@ button{font:inherit;color:inherit}
   .ev-date b{font-size:15px}
   .ev-main b{font-size:14px}
 }
+.conn-err{max-width:640px;margin:40px auto;text-align:left;display:grid;gap:10px;background:var(--surface);border-radius:12px;box-shadow:var(--shadow);padding:22px 24px;color:var(--ink-2)}
+.conn-err p{margin:0}
+.conn-err .mono{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.conn-err code{font:500 12.5px var(--mono);background:var(--sunk);padding:1px 5px;border-radius:4px}
