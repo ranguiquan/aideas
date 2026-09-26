@@ -332,18 +332,7 @@
     for (var i = 0; i <= n; i++) counts.push(0);
     filtered().forEach(function (x) { counts[idxOf(sgDay(x.created), dom)]++; });
     counts.forEach(function (c) { peak = Math.max(peak, c); });
-    $("daily-bars").innerHTML = counts.map(function (c, i) {
-      var k = addDays(dom.min, i);
-      return '<button type="button" class="' + (i >= lo && i <= hi ? "on" : "") + '" data-day="' + i + '" title="' + md(k) + " · " + c + ' 条，点击只看这一天" aria-label="' + md(k) + " " + c + ' 条">' +
-        '<i style="height:' + (c ? Math.max(10, c / (peak || 1) * 100) : 0) + '%"></i></button>';
-    }).join("");
-    $("daily-max").textContent = peak ? "单日最多 " + peak + " 条" : "暂无记录";
-    // one label slot per bar so labels line up; label every day when few, else just the ends
-    $("daily-x").className = "daily-x" + (bins <= 8 ? "" : " ends");
-    $("daily-x").innerHTML = counts.map(function (_, i) {
-      var show = bins <= 8 || i === 0 || i === n;
-      return "<span>" + (show ? mdShort(addDays(dom.min, i)) : "") + "</span>";
-    }).join("");
+    updateCalendar(dom, counts, peak, lo, hi);
 
     // label every day when there are few, otherwise first / middle / last
     var tickIdx = bins <= 8 ? counts.map(function (_, i) { return i; }) : [0, Math.round(n / 2), n];
@@ -354,6 +343,106 @@
     var inCount = counts.slice(lo, hi + 1).reduce(function (a, b) { return a + b; }, 0);
     $("tf-sum").textContent = (lo === hi ? md(from) : md(from) + " – " + md(to)) + " · " + inCount + " 条记录";
     $("tf-all").hidden = !r.from && !r.to;
+  }
+
+  // ---------- 每日入库 calendar (contribution-graph style) ----------
+  function monIdx(key) { return (new Date(dayNum(key) * DAY).getUTCDay() + 6) % 7; }   // Mon=0 … Sun=6
+
+  function buildCalendar(dom) {
+    var end = dom.max;
+    var start = dayNum(dom.min) < dayNum(end) - 364 ? dom.min : addDays(end, -364);   // at least a year
+    start = addDays(start, -monIdx(start));
+    var key = start + "|" + end;
+    if (state.calKey === key) return;
+    state.calKey = key;
+    var days = dayNum(end) - dayNum(start) + 1, weeks = Math.ceil(days / 7), html = [], lastLabel = -9;
+    for (var w = 0; w < weeks; w++) {
+      // label a column when its week contains the 1st of a month (or it's the first column)
+      for (var d = 0; d < 7; d++) {
+        var k = addDays(start, w * 7 + d), dm = +k.slice(8, 10);
+        if ((dm === 1 || w === 0) && w - lastLabel >= 3 && dayNum(k) <= dayNum(end)) {
+          var mo = +k.slice(5, 7);
+          html.push('<span class="m" style="grid-column:' + (w + 2) + ' / span 3">' + (mo === 1 ? k.slice(0, 4) : mo + "月") + "</span>");
+          lastLabel = w; break;
+        }
+      }
+    }
+    ["一", "", "三", "", "五", "", ""].forEach(function (t, d) { if (t) html.push('<span class="wd" style="grid-row:' + (d + 2) + '">' + t + "</span>"); });
+    for (var i = 0; i < days; i++) {
+      html.push('<i class="c" data-k="' + addDays(start, i) + '" style="grid-column:' + (Math.floor(i / 7) + 2) + ";grid-row:" + (i % 7 + 2) + '"></i>');
+    }
+    $("cal").innerHTML = html.join("");
+    state.calScrolled = false;
+    scrollCalendarToEnd();
+  }
+
+  function scrollCalendarToEnd() {
+    var sc = $("cal-scroll");
+    if (state.calScrolled || !sc.clientWidth) return;   // hidden views have no width yet
+    sc.scrollLeft = sc.scrollWidth;
+    state.calScrolled = true;
+  }
+
+  function updateCalendar(dom, counts, peak, lo, hi) {
+    buildCalendar(dom);
+    var from = addDays(dom.min, lo), to = addDays(dom.min, hi), total = 0;
+    var ranged = lo > 0 || hi < dom.n;
+    $("cal").classList.toggle("ranged", ranged);
+    $("cal").querySelectorAll(".c").forEach(function (el) {
+      var k = el.dataset.k, inDom = k >= dom.min && k <= dom.max;
+      var c = inDom ? counts[idxOf(k, dom)] : 0;
+      var lv = !c ? 0 : Math.min(4, Math.ceil(c / (peak || 1) * 4));
+      total += c;
+      el.className = "c l" + lv + (inDom ? "" : " out") + (k >= from && k <= to ? " sel" : "");
+      el.title = md(k) + " · " + c + " 条";
+    });
+    $("daily-max").textContent = total ? "共 " + total + " 条 · 单日最多 " + peak : "暂无记录";
+  }
+
+  function bindCalendar() {
+    var cal = $("cal"), sc = $("cal-scroll"), drag = null;
+    function cellAt(x, y) { var el = document.elementFromPoint(x, y); return el && el.closest ? el.closest("#cal .c") : null; }
+    function preview(a, b) {
+      var lo = a < b ? a : b, hi = a < b ? b : a;
+      cal.querySelectorAll(".c").forEach(function (el) { var k = el.dataset.k; el.classList.toggle("pv", k >= lo && k <= hi); });
+      $("daily-max").textContent = lo === hi ? md(lo) : md(lo) + " – " + md(hi);
+    }
+    cal.addEventListener("pointerdown", function (e) {
+      var c = e.target.closest(".c");
+      if (!c || e.button > 0) return;
+      e.preventDefault();
+      drag = { a: c.dataset.k, b: c.dataset.k, x: e.clientX };
+      cal.classList.add("dragging");
+      cal.setPointerCapture(e.pointerId);
+      preview(drag.a, drag.b);
+    });
+    cal.addEventListener("pointermove", function (e) {
+      if (!drag) return;
+      // nudge the scroll when dragging near either edge of the card
+      var r = sc.getBoundingClientRect();
+      if (e.clientX > r.right - 24) sc.scrollLeft += 12; else if (e.clientX < r.left + 36) sc.scrollLeft -= 12;
+      var c = cellAt(e.clientX, Math.min(Math.max(e.clientY, r.top + 16), r.bottom - 8));
+      if (c && c.dataset.k !== drag.b) { drag.b = c.dataset.k; preview(drag.a, drag.b); }
+    });
+    function finish() {
+      if (!drag) return;
+      var a = drag.a < drag.b ? drag.a : drag.b, b = drag.a < drag.b ? drag.b : drag.a;
+      drag = null;
+      cal.classList.remove("dragging");
+      cal.querySelectorAll(".pv").forEach(function (el) { el.classList.remove("pv"); });
+      // snap the selection into the valid range (first record … today)
+      var dom = timeDomain();
+      if (b < dom.min) a = b = dom.min;
+      else if (a > dom.max) a = b = dom.max;
+      else { if (a < dom.min) a = dom.min; if (b > dom.max) b = dom.max; }
+      setRange(idxOf(a, dom), idxOf(b, dom));
+    }
+    cal.addEventListener("pointerup", finish);
+    cal.addEventListener("pointercancel", finish);
+    // vertical wheel scrolls the calendar sideways
+    sc.addEventListener("wheel", function (e) {
+      if (sc.scrollWidth > sc.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { sc.scrollLeft += e.deltaY; e.preventDefault(); }
+    }, { passive: false });
   }
 
   function setRange(lo, hi) {
@@ -396,10 +485,7 @@
       var hi = e.target.value ? idxOf(e.target.value, dom) : dom.n;
       setRange(Math.min(lo, hi), hi);
     });
-    $("daily-bars").addEventListener("click", function (e) {
-      var b = e.target.closest("button[data-day]");
-      if (b) setRange(+b.dataset.day, +b.dataset.day);
-    });
+    bindCalendar();
     $("tf-all").addEventListener("click", function () { state.range.from = state.range.to = null; renderTimeFilter(); scheduleGraph(); });
   }
 
@@ -569,7 +655,7 @@
     state.view = v;
     document.querySelectorAll(".views a").forEach(function (a) { if (a.dataset.view === v) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     ["feed", "graph", "events"].forEach(function (k) { $("v-" + k).hidden = k !== v; });
-    if (v === "graph") renderGraph();
+    if (v === "graph") { renderGraph(); scrollCalendarToEnd(); }
   }
 
   function rerender() {
