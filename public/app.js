@@ -112,6 +112,19 @@
     });
   }
 
+  // Sidebar filters for themes / events / reviews. Their own tags, or the parent theme's when an event has none.
+  function planTags(p) {
+    if (p.tags && p.tags.length) return p.tags;
+    var t = p.theme && state.byId[p.theme[0]];
+    return t && t.tags ? t.tags : [];
+  }
+  function planMatches(p) {
+    var f = state.f, q = state.q.trim().toLowerCase();
+    if (f.tag.size && !planTags(p).some(function (t) { return f.tag.has(t); })) return false;
+    if (q && [p.name, p.hypothesis, p.expectation, p.result].join(" ").toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  }
+
   function themes() { return state.data.plans.filter(function (p) { return p.kind === "追踪主题"; }); }
   function events() { return state.data.plans.filter(function (p) { return p.kind === "日程事件"; }); }
 
@@ -121,7 +134,7 @@
     function group(el, key, values, colorOf) {
       $(el).innerHTML = values.map(function (v) {
         var n = recs.filter(function (r) { return key === "tag" ? r.tags.indexOf(v) >= 0 : r[key] === v; }).length;
-        return '<button class="fchip" type="button" data-k="' + key + '" data-v="' + esc(v) + '" aria-pressed="' + state.f[key].has(v) + '" style="--dot:' + colorOf(v) + '"><i></i>' + esc(v) + "<small>" + n + "</small></button>";
+        return '<button class="fchip" type="button" data-k="' + key + '" data-v="' + esc(v) + '" aria-pressed="' + state.f[key].has(v) + '" style="--dot:' + colorOf(v) + '"><i></i>' + esc(v) + "<small title=\"" + n + " 条记录\">" + n + "</small></button>";
       }).join("");
     }
     var tagSet = {};
@@ -256,7 +269,23 @@
 
   function graphData() {
     var recs = filtered().filter(function (r) { return inRange(r.created); });
-    var plans = state.data.plans.filter(function (p) { return inRange(p.created); });
+    var f = state.f, recordOnly = f.type.size || f.status.size, showAll = $("g-events").checked;
+    var recIds = {};
+    recs.forEach(function (r) { recIds[r.id] = 1; });
+    function linked(p) {
+      return p.records.some(function (id) { return recIds[id]; }) || recs.some(function (r) { return r.plans.indexOf(p.id) >= 0; });
+    }
+    // A plan item shows when it is tied to a visible record, or (with no record-only filter) matches tag/search.
+    // Events and reviews are only drawn by default when they connect to a record; the toggle shows all of them.
+    var plans = state.data.plans.filter(function (p) {
+      if (!inRange(p.created)) return false;
+      var isLinked = linked(p);
+      if (!isLinked && (recordOnly || !planMatches(p))) return false;
+      if (p.kind === "追踪主题") return true;
+      return showAll || isLinked;
+    });
+    var shown = {};
+    plans.forEach(function (p) { shown[p.id] = 1; });
     var visThemes = plans.filter(function (p) { return p.kind === "追踪主题"; });
     var ids = {}, nodes = [], links = [], seen = {};
     function addLink(s, t, kind) {
@@ -268,7 +297,14 @@
     plans.forEach(function (p) {
       ids[p.id] = 1;
       var k = p.kind === "追踪主题" ? "theme" : p.kind === "日程事件" ? "event" : "review";
-      nodes.push({ id: p.id, kind: k, label: p.name, color: k === "theme" ? "var(--c-purple)" : k === "event" ? "var(--c-blue)" : "var(--c-gray)", ref: p });
+      // count this theme's events from both sides of the relation, minus the ones already on the graph
+      var evIds = {};
+      if (k === "theme") {
+        p.events.forEach(function (id) { evIds[id] = 1; });
+        events().forEach(function (e) { if (e.theme.indexOf(p.id) >= 0) evIds[e.id] = 1; });
+      }
+      var hidden = Object.keys(evIds).filter(function (id) { return !shown[id]; }).length;
+      nodes.push({ id: p.id, kind: k, label: p.name, color: k === "theme" ? "var(--c-purple)" : k === "event" ? "var(--c-blue)" : "var(--c-gray)", ref: p, hiddenEvents: hidden });
     });
     if ($("g-tags").checked) {
       var tags = {};
@@ -337,6 +373,12 @@
       } else if (d.kind === "theme") {
         s.append("circle").attr("r", r + 5).style("fill", "none").style("stroke", d.color).style("stroke-width", 1.5).style("opacity", 0.45);
         s.append("circle").attr("r", r).style("fill", d.color);
+        if (d.hiddenEvents) {   // events folded into the theme: show how many
+          var bx = -r * 0.72, by = -r * 0.72;
+          s.append("circle").attr("cx", bx).attr("cy", by).attr("r", 7.5).style("fill", "var(--c-blue)").style("stroke", "var(--surface)").style("stroke-width", 2);
+          s.append("text").attr("class", "badge").attr("x", bx).attr("y", by + 3.5).attr("text-anchor", "middle").text(d.hiddenEvents);
+          s.append("title").text(d.hiddenEvents + " 个检验事件已收起（打开「显示全部事件」可展开）");
+        }
       } else {
         s.append("circle").attr("r", r).style("fill", d.color).style("stroke", "var(--surface)").style("stroke-width", 2);
         if (d.kind === "record" && d.ref.status === "待处理") s.append("circle").attr("r", 3).attr("cx", r * 0.75).attr("cy", -r * 0.75).style("fill", "var(--c-red)").style("stroke", "var(--surface)").style("stroke-width", 1.5);
@@ -597,7 +639,7 @@
   // ---------- events ----------
   function renderEvents() {
     // dated events first (chronological), undated ones at the end
-    var th = themes(), ev = events().slice().sort(function (a, b) { return !a.date ? 1 : !b.date ? -1 : a.date < b.date ? -1 : 1; });
+    var th = themes().filter(planMatches), ev = events().filter(planMatches).sort(function (a, b) { return !a.date ? 1 : !b.date ? -1 : a.date < b.date ? -1 : 1; });
     $("n-events").textContent = th.length + ev.length;
     var html = '<div class="ev-grid">';
     html += '<div><p class="sec-t">时间轴 <em>今天 → ' + (function () { var d = ev.filter(function (e) { return e.date; }), l = d[d.length - 1]; return l ? md(l.dateEnd || l.date) : ""; })() + "</em><span class=\"tl-hint\" id=\"tl-hint\" hidden>左右拖动查看</span></p><div class=\"tl-wrap\" id=\"tl\"></div></div>";
@@ -679,12 +721,12 @@
 
   function timeline(avail) {
     var items = [];
-    themes().forEach(function (t) { if (t.date) items.push({ id: t.id, date: t.date, end: null, name: "复查 · " + t.name, color: "var(--c-purple)", shape: "circle" }); });
-    state.data.records.forEach(function (r) { if (r.type === "决策" && r.reviewDate) items.push({ id: r.id, date: r.reviewDate, end: null, name: "决策回看 · " + r.title, color: "var(--t-decision)", shape: "circle" }); });
-    events().forEach(function (e) { if (e.date) items.push({ id: e.id, date: e.date, end: e.dateEnd, name: e.name, color: "var(--c-blue)", shape: "diamond", rem: e.status === "待发生" ? [addDays(e.date, -2), addDays(e.dateEnd || e.date, 1)] : null, noExp: !e.expectation }); });
-    state.data.plans.forEach(function (p) { if (p.kind === "复盘" && p.date) items.push({ id: p.id, date: p.date, end: null, name: p.name, color: "var(--c-gray)", shape: "circle" }); });
+    themes().filter(planMatches).forEach(function (t) { if (t.date) items.push({ id: t.id, date: t.date, end: null, name: "复查 · " + t.name, color: "var(--c-purple)", shape: "circle" }); });
+    filtered().forEach(function (r) { if (r.type === "决策" && r.reviewDate) items.push({ id: r.id, date: r.reviewDate, end: null, name: "决策回看 · " + r.title, color: "var(--t-decision)", shape: "circle" }); });
+    events().filter(planMatches).forEach(function (e) { if (e.date) items.push({ id: e.id, date: e.date, end: e.dateEnd, name: e.name, color: "var(--c-blue)", shape: "diamond", rem: e.status === "待发生" ? [addDays(e.date, -2), addDays(e.dateEnd || e.date, 1)] : null, noExp: !e.expectation }); });
+    state.data.plans.filter(planMatches).forEach(function (p) { if (p.kind === "复盘" && p.date) items.push({ id: p.id, date: p.date, end: null, name: p.name, color: "var(--c-gray)", shape: "circle" }); });
     items.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
-    if (!items.length) return '<p class="empty">还没有带日期的主题或事件。</p>';
+    if (!items.length) return '<p class="empty">没有符合条件的主题或事件。</p>';
 
     var today = todayKey();
     var all = items.reduce(function (acc, i) { acc.push(i.date); if (i.end) acc.push(i.end); if (i.rem) acc.push(i.rem[0], i.rem[1]); return acc; }, [today]);
@@ -795,7 +837,7 @@
   }
 
   function rerender() {
-    renderFilters(); renderFeed(); renderTimeFilter();
+    renderFilters(); renderFeed(); renderTimeFilter(); renderEvents();
     if (state.view === "graph") renderGraph(); else $("n-graph").textContent = graphData().nodes.filter(function (n) { return n.kind !== "tag"; }).length;
   }
 
@@ -809,6 +851,7 @@
     $("f-reset").addEventListener("click", function () { state.f.type.clear(); state.f.status.clear(); state.f.tag.clear(); rerender(); });
     $("q").addEventListener("input", function (e) { state.q = e.target.value; rerender(); });
     $("g-tags").addEventListener("change", renderGraph);
+    $("g-events").addEventListener("change", renderGraph);
     document.addEventListener("click", function (e) {
       var el = e.target.closest("[data-id]");
       if (el && !el.closest(".g-node")) openDetail(el.dataset.id);
