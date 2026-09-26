@@ -129,6 +129,8 @@ button{font:inherit;color:inherit}
 .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .legend svg{width:18px;height:12px;overflow:visible}
+.toggles{display:flex;gap:16px;flex-wrap:wrap}
+.g-node text.badge{font:600 9.5px/1 var(--mono);fill:var(--surface);stroke:none}
 .toggle{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;color:var(--ink-2);cursor:pointer}
 /* time range filter */
 .tf-wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,400px);gap:12px;margin-bottom:14px}
@@ -225,13 +227,16 @@ button{font:inherit;color:inherit}
 .tl-item text.sub{font:500 10.5px var(--mono);fill:var(--muted)}
 .tl-rem{fill:var(--c-yellow)}
 .tl-rem-line{stroke:var(--c-yellow);stroke-dasharray:2 2}
-.theme-card{background:var(--surface);border-radius:12px;box-shadow:var(--shadow);padding:20px 22px;display:grid;gap:16px;cursor:pointer}
+.theme-list{display:grid;gap:12px}
+.theme-card{background:var(--surface);border-radius:12px;box-shadow:var(--shadow);padding:20px 22px 16px;display:grid;gap:14px;cursor:pointer}
 .theme-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline}
 .theme-head h3{margin:0;font:700 20px/1.35 var(--serif)}
 .theme-head .when{font:500 12.5px var(--mono);color:var(--muted)}
 .hyp{margin:0;font-size:15px;line-height:1.7;max-width:70ch}
 .hyp b{display:block;font:600 11px/1 var(--mono);letter-spacing:.1em;color:var(--muted);margin-bottom:6px}
 .signals{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.signals.one{grid-template-columns:1fr}
+.theme-foot{border-top:1px solid var(--line);padding-top:12px;margin-top:2px}
 .signal{border-radius:8px;padding:12px 14px;background:color-mix(in srgb,var(--sc) 8%,transparent);border:1px solid color-mix(in srgb,var(--sc) 30%,transparent)}
 .signal b{display:block;font-size:12px;color:var(--sc);margin-bottom:4px}
 .signal p{margin:0;font-size:13px;color:var(--ink-2)}
@@ -305,3 +310,22 @@ button{font:inherit;color:inherit}
   .ev-date b{font-size:15px}
   .ev-main b{font-size:14px}
 }
+.conn-err{max-width:640px;margin:40px auto;text-align:left;display:grid;gap:10px;background:var(--surface);border-radius:12px;box-shadow:var(--shadow);padding:22px 24px;color:var(--ink-2)}
+.conn-err p{margin:0}
+.conn-err .mono{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.conn-err code{font:500 12.5px var(--mono);background:var(--sunk);padding:1px 5px;border-radius:4px}
+
+/* ---------- login ---------- */
+.login{min-height:100%;display:grid;place-items:center;padding:24px 16px}
+.login-card{width:min(360px,100%);background:var(--surface);border-radius:14px;box-shadow:var(--shadow);padding:28px 26px 22px;display:grid;gap:10px}
+.login-card .brand{margin-bottom:6px}
+.login-lead{margin:0 0 8px;color:var(--ink-2)}
+.login-card .flabel{margin:0}
+.login-card input{font:inherit;font-size:15px;color:var(--ink);background:var(--raised);border:1px solid var(--line-2);border-radius:8px;padding:10px 12px;width:100%}
+.login-card input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.login-err{margin:0;font-size:13px;color:var(--c-red)}
+.login-btn{appearance:none;border:0;border-radius:8px;background:var(--ink);color:var(--surface);font:500 14px var(--sans);padding:11px 14px;cursor:pointer;margin-top:4px}
+.login-btn:disabled{opacity:.6;cursor:default}
+.login-note{margin:2px 0 0;font-size:12px;color:var(--muted);text-align:center}
+.logout{appearance:none;border:0;background:none;padding:0;color:var(--muted);font-size:12.5px;cursor:pointer;justify-self:start}
+.logout:hover{color:var(--ink)}

@@ -33,9 +33,10 @@
   function dayNum(key) { var p = key.split("-"); return Date.UTC(+p[0], +p[1] - 1, +p[2]) / DAY; }
   function daysUntil(key) { return dayNum(key) - dayNum(todayKey()); }
   function addDays(key, n) { return new Date((dayNum(key) + n) * DAY).toISOString().slice(0, 10); }
-  function md(key) { var p = key.split("-"); return +p[1] + "月" + +p[2] + "日"; }
-  function mdShort(key) { var p = key.split("-"); return p[1] + "/" + p[2]; }
+  function md(key) { if (!key) return "—"; var p = key.split("-"); return +p[1] + "月" + +p[2] + "日"; }
+  function mdShort(key) { if (!key) return "—"; var p = key.split("-"); return p[1] + "/" + p[2]; }
   function rel(key) {
+    if (!key) return "日期未定";
     var d = daysUntil(key);
     if (d === 0) return "今天";
     if (d === 1) return "明天";
@@ -48,16 +49,51 @@
   }
 
   // ---------- data ----------
+  // Why /api/data failed, kept so the "not connected" screen can say what to fix.
+  var apiError = null;
+
   function load() {
     var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 8000);
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 15000);
     return fetch("/api/data", ctrl ? { signal: ctrl.signal } : {})
-      .then(function (r) { clearTimeout(timer); if (!r.ok) throw new Error(r.status); return r.json(); })
-      .catch(function () { return fetch("data/snapshot.json").then(function (r) { return r.json(); }); });
+      .then(function (r) {
+        clearTimeout(timer);
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          if (!r.ok || !j.records) throw { status: r.status, body: j };
+          return j;
+        });
+      })
+      .catch(function (e) {
+        if (e && e.body && e.body.auth === "required") throw { needLogin: true };
+        apiError = e && e.name === "AbortError" ? { status: 0, body: { error: "请求超时（15 秒）" } }
+          : e && e.status !== undefined ? e : { status: 0, body: { error: String(e && e.message || e) } };
+        return fetch("data/snapshot.json").then(function (r) { if (!r.ok) throw new Error("no snapshot"); return r.json(); });
+      });
   }
+
+  function apiErrorHint(e) {
+    var b = (e && e.body) || {}, code = b.notionCode, st = e && e.status;
+    if (b.auth === "unconfigured") return "还没有设置访问密码，所以数据接口处于关闭状态。在 Vercel 环境变量中添加 <code>AUTH_PASSWORD</code>（至少 12 位）和 <code>AUTH_SECRET</code>（至少 32 位随机字符），然后 Redeploy。";
+    if (st === 404) return "没有找到 <code>/api/data</code> 接口。本地用 <code>npx serve</code> 预览时这是正常的；线上出现说明 <code>api/</code> 目录没有被部署，检查 Vercel 项目的 Root Directory 是否为 <code>./</code>。";
+    if (st === 503) return "这次部署读不到 <code>NOTION_TOKEN</code>。检查环境变量是否勾选了当前环境（Preview 部署需要勾 <b>Preview</b>），以及添加变量之后是否 Redeploy 过——已有的部署不会自动拿到新变量。";
+    if (code === "unauthorized") return "Notion 拒绝了这个 token（无效或已被重置）。重新复制 integration 的 secret，更新 Vercel 环境变量后 Redeploy。";
+    if (code === "object_not_found") return "token 有效，但 integration 看不到这个数据库（" + esc(b.dataSource || "") + "）。在 Notion 里打开「信息与灵感库」和「计划与关注」，右上角 <code>···</code> → Connections，两个都要添加这个 integration。如果用的是自己的数据库，还要设置 <code>NOTION_INFO_DS</code> / <code>NOTION_PLAN_DS</code>。";
+    if (code === "restricted_resource") return "integration 没有读取权限。在 Notion integration 设置里勾选 <b>Read content</b>。";
+    if (code === "validation_error" || code === "invalid_request_url") return "Notion 不接受这个请求，通常是数据源 ID 写错了。检查 <code>NOTION_INFO_DS</code> / <code>NOTION_PLAN_DS</code>（只填 ID，不要带 <code>collection://</code>）。";
+    return "在 Vercel 项目的 Environment Variables 中添加 <code>NOTION_TOKEN</code>，在 Notion 里把两个数据库连接到这个 integration，然后 Redeploy。";
+  }
+
+  // Notion dates can carry a time ("2026-10-14T20:30:00.000+08:00"). Layout works on SGT day keys,
+  // so normalize them here and keep the time for display.
+  function toKey(s) { return s && s.length > 10 ? sgDay(s) : s; }
 
   function index(data) {
     state.byId = {};
+    data.plans.forEach(function (p) {
+      p.time = p.date && p.date.length > 10 ? fmtTime.format(new Date(p.date)) : null;
+      p.date = toKey(p.date); p.dateEnd = toKey(p.dateEnd);
+    });
+    data.records.forEach(function (r) { r.reviewDate = toKey(r.reviewDate); });
     data.records.forEach(function (r) { r._kind = "record"; state.byId[r.id] = r; });
     data.plans.forEach(function (p) { p._kind = "plan"; state.byId[p.id] = p; });
   }
@@ -76,6 +112,19 @@
     });
   }
 
+  // Sidebar filters for themes / events / reviews. Their own tags, or the parent theme's when an event has none.
+  function planTags(p) {
+    if (p.tags && p.tags.length) return p.tags;
+    var t = p.theme && state.byId[p.theme[0]];
+    return t && t.tags ? t.tags : [];
+  }
+  function planMatches(p) {
+    var f = state.f, q = state.q.trim().toLowerCase();
+    if (f.tag.size && !planTags(p).some(function (t) { return f.tag.has(t); })) return false;
+    if (q && [p.name, p.hypothesis, p.expectation, p.result].join(" ").toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  }
+
   function themes() { return state.data.plans.filter(function (p) { return p.kind === "追踪主题"; }); }
   function events() { return state.data.plans.filter(function (p) { return p.kind === "日程事件"; }); }
 
@@ -85,7 +134,7 @@
     function group(el, key, values, colorOf) {
       $(el).innerHTML = values.map(function (v) {
         var n = recs.filter(function (r) { return key === "tag" ? r.tags.indexOf(v) >= 0 : r[key] === v; }).length;
-        return '<button class="fchip" type="button" data-k="' + key + '" data-v="' + esc(v) + '" aria-pressed="' + state.f[key].has(v) + '" style="--dot:' + colorOf(v) + '"><i></i>' + esc(v) + "<small>" + n + "</small></button>";
+        return '<button class="fchip" type="button" data-k="' + key + '" data-v="' + esc(v) + '" aria-pressed="' + state.f[key].has(v) + '" style="--dot:' + colorOf(v) + '"><i></i>' + esc(v) + "<small title=\"" + n + " 条记录\">" + n + "</small></button>";
       }).join("");
     }
     var tagSet = {};
@@ -98,8 +147,40 @@
     $("f-reset").hidden = !any;
   }
 
+  // ---------- login ----------
+  function showLogin() {
+    document.querySelector(".app").hidden = true;
+    $("login").hidden = false;
+    $("login-pw").focus();
+  }
+
+  function bindLogin() {
+    $("login-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var btn = $("login-btn"), err = $("login-err"), pw = $("login-pw").value;
+      if (!pw) return;
+      btn.disabled = true; btn.textContent = "验证中…"; err.hidden = true;
+      fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }), credentials: "same-origin" })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, body: j }; }); })
+        .then(function (r) {
+          if (r.status === 200) { location.reload(); return; }
+          err.textContent = r.status === 401 ? "密码不对，再试一次。"
+            : r.body.auth === "unconfigured" ? "服务器还没有设置访问密码（AUTH_PASSWORD / AUTH_SECRET）。"
+            : "登录失败（HTTP " + r.status + "）。";
+          err.hidden = false;
+          $("login-pw").select();
+        })
+        .catch(function () { err.textContent = "网络错误，请稍后再试。"; err.hidden = false; })
+        .then(function () { btn.disabled = false; btn.textContent = "登录"; });
+    });
+    $("logout").addEventListener("click", function () {
+      fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () { location.reload(); }, function () { location.reload(); });
+    });
+  }
+
   function renderSource() {
     var el = $("src"), d = state.data;
+    $("logout").hidden = d.source !== "live";
     el.className = "src " + (d.source === "live" ? "live" : "snap");
     var t = new Date(d.generatedAt);
     var when = fmtDay.format(t) + " " + fmtTime.format(t);
@@ -188,7 +269,23 @@
 
   function graphData() {
     var recs = filtered().filter(function (r) { return inRange(r.created); });
-    var plans = state.data.plans.filter(function (p) { return inRange(p.created); });
+    var f = state.f, recordOnly = f.type.size || f.status.size, showAll = $("g-events").checked;
+    var recIds = {};
+    recs.forEach(function (r) { recIds[r.id] = 1; });
+    function linked(p) {
+      return p.records.some(function (id) { return recIds[id]; }) || recs.some(function (r) { return r.plans.indexOf(p.id) >= 0; });
+    }
+    // A plan item shows when it is tied to a visible record, or (with no record-only filter) matches tag/search.
+    // Events and reviews are only drawn by default when they connect to a record; the toggle shows all of them.
+    var plans = state.data.plans.filter(function (p) {
+      if (!inRange(p.created)) return false;
+      var isLinked = linked(p);
+      if (!isLinked && (recordOnly || !planMatches(p))) return false;
+      if (p.kind === "追踪主题") return true;
+      return showAll || isLinked;
+    });
+    var shown = {};
+    plans.forEach(function (p) { shown[p.id] = 1; });
     var visThemes = plans.filter(function (p) { return p.kind === "追踪主题"; });
     var ids = {}, nodes = [], links = [], seen = {};
     function addLink(s, t, kind) {
@@ -200,7 +297,14 @@
     plans.forEach(function (p) {
       ids[p.id] = 1;
       var k = p.kind === "追踪主题" ? "theme" : p.kind === "日程事件" ? "event" : "review";
-      nodes.push({ id: p.id, kind: k, label: p.name, color: k === "theme" ? "var(--c-purple)" : k === "event" ? "var(--c-blue)" : "var(--c-gray)", ref: p });
+      // count this theme's events from both sides of the relation, minus the ones already on the graph
+      var evIds = {};
+      if (k === "theme") {
+        p.events.forEach(function (id) { evIds[id] = 1; });
+        events().forEach(function (e) { if (e.theme.indexOf(p.id) >= 0) evIds[e.id] = 1; });
+      }
+      var hidden = Object.keys(evIds).filter(function (id) { return !shown[id]; }).length;
+      nodes.push({ id: p.id, kind: k, label: p.name, color: k === "theme" ? "var(--c-purple)" : k === "event" ? "var(--c-blue)" : "var(--c-gray)", ref: p, hiddenEvents: hidden });
     });
     if ($("g-tags").checked) {
       var tags = {};
@@ -269,6 +373,12 @@
       } else if (d.kind === "theme") {
         s.append("circle").attr("r", r + 5).style("fill", "none").style("stroke", d.color).style("stroke-width", 1.5).style("opacity", 0.45);
         s.append("circle").attr("r", r).style("fill", d.color);
+        if (d.hiddenEvents) {   // events folded into the theme: show how many
+          var bx = -r * 0.72, by = -r * 0.72;
+          s.append("circle").attr("cx", bx).attr("cy", by).attr("r", 7.5).style("fill", "var(--c-blue)").style("stroke", "var(--surface)").style("stroke-width", 2);
+          s.append("text").attr("class", "badge").attr("x", bx).attr("y", by + 3.5).attr("text-anchor", "middle").text(d.hiddenEvents);
+          s.append("title").text(d.hiddenEvents + " 个检验事件已收起（打开「显示全部事件」可展开）");
+        }
       } else {
         s.append("circle").attr("r", r).style("fill", d.color).style("stroke", "var(--surface)").style("stroke-width", 2);
         if (d.kind === "record" && d.ref.status === "待处理") s.append("circle").attr("r", 3).attr("cx", r * 0.75).attr("cy", -r * 0.75).style("fill", "var(--c-red)").style("stroke", "var(--surface)").style("stroke-width", 1.5);
@@ -528,11 +638,12 @@
 
   // ---------- events ----------
   function renderEvents() {
-    var th = themes(), ev = events().slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    // dated events first (chronological), undated ones at the end
+    var th = themes().filter(planMatches), ev = events().filter(planMatches).sort(function (a, b) { return !a.date ? 1 : !b.date ? -1 : a.date < b.date ? -1 : 1; });
     $("n-events").textContent = th.length + ev.length;
     var html = '<div class="ev-grid">';
-    html += '<div><p class="sec-t">时间轴 <em>今天 → ' + (ev.length ? md(ev[ev.length - 1].dateEnd || ev[ev.length - 1].date) : "") + "</em><span class=\"tl-hint\" id=\"tl-hint\" hidden>左右拖动查看</span></p><div class=\"tl-wrap\" id=\"tl\"></div></div>";
-    html += "<div><p class=\"sec-t\">追踪主题 <em>" + th.length + "</em></p>" + th.map(themeCard).join("") + "</div>";
+    html += '<div><p class="sec-t">时间轴 <em>今天 → ' + (function () { var d = ev.filter(function (e) { return e.date; }), l = d[d.length - 1]; return l ? md(l.dateEnd || l.date) : ""; })() + "</em><span class=\"tl-hint\" id=\"tl-hint\" hidden>左右拖动查看</span></p><div class=\"tl-wrap\" id=\"tl\"></div></div>";
+    html += "<div><p class=\"sec-t\">追踪主题 <em>" + th.length + "</em></p>" + '<div class="theme-list">' + th.map(themeCard).join("") + "</div></div>";
     html += '<div><p class="sec-t">日程事件 <em>' + ev.length + '</em></p><div class="ev-list">' + ev.map(evRow).join("") + "</div></div>";
     var reviews = state.data.plans.filter(function (p) { return p.kind === "复盘"; });
     if (reviews.length) {
@@ -584,11 +695,12 @@
     return '<article class="theme-card" data-id="' + t.id + '" tabindex="0">' +
       '<div class="theme-head"><h3>' + esc(t.name) + '</h3><span class="when">' + pill(t.status) + " · 下次复查 " + (t.date ? md(t.date) + "（" + rel(t.date) + "）" : "未设") + "</span></div>" +
       (t.hypothesis ? '<p class="hyp"><b>假设</b>' + esc(t.hypothesis) + "</p>" : "") +
-      '<div class="signals">' +
-      (t.confirm ? '<div class="signal" style="--sc:var(--c-green)"><b>证实信号</b><p>' + esc(t.confirm) + "</p></div>" : "") +
-      (t.refute ? '<div class="signal" style="--sc:var(--c-red)"><b>推翻信号</b><p>' + esc(t.refute) + "</p></div>" : "") +
-      "</div>" +
-      '<div class="rels">' + tagsHtml(t.tags) + "<span>" + ICON_PLAN + evs.length + " 个检验事件</span><span>" + ICON_DERIVE + t.records.length + " 条相关记录</span></div>" +
+      // only render the signals row when there is something in it; a single signal spans the full width
+      (t.confirm || t.refute ? '<div class="signals' + (t.confirm && t.refute ? "" : " one") + '">' +
+        (t.confirm ? '<div class="signal" style="--sc:var(--c-green)"><b>证实信号</b><p>' + esc(t.confirm) + "</p></div>" : "") +
+        (t.refute ? '<div class="signal" style="--sc:var(--c-red)"><b>推翻信号</b><p>' + esc(t.refute) + "</p></div>" : "") +
+        "</div>" : "") +
+      '<div class="rels theme-foot">' + tagsHtml(t.tags) + "<span>" + ICON_PLAN + evs.length + " 个检验事件</span><span>" + ICON_DERIVE + t.records.length + " 条相关记录</span></div>" +
       "</article>";
   }
 
@@ -596,24 +708,25 @@
     var theme = state.byId[e.theme[0]];
     var flags = [];
     if (e.status === "待发生") {
-      if (!e.expectation) flags.push('<span class="flag warn">预期未写 · 提醒 ' + mdShort(addDays(e.date, -2)) + "</span>");
+      if (!e.date) flags.push('<span class="flag warn">日期未定</span>');
+      else if (!e.expectation) flags.push('<span class="flag warn">预期未写 · 提醒 ' + mdShort(addDays(e.date, -2)) + "</span>");
       else flags.push('<span class="flag">已写预期</span>');
     }
     if (e.result) flags.push('<span class="flag">已补结果</span>');
     return '<div class="ev-row" data-id="' + e.id + '" tabindex="0">' +
-      '<div class="ev-date"><b>' + mdShort(e.date) + "</b><span>" + (e.dateEnd ? "至 " + mdShort(e.dateEnd) : e.date.slice(0, 4)) + "</span></div>" +
+      '<div class="ev-date"><b>' + mdShort(e.date) + "</b><span>" + (e.dateEnd ? "至 " + mdShort(e.dateEnd) : e.time ? e.time : e.date ? e.date.slice(0, 4) : "") + "</span></div>" +
       '<div class="ev-main"><b>' + esc(e.name) + "</b><small>" + (theme ? "所属主题：" + esc(theme.name) : "未挂主题") + "</small></div>" +
       '<div class="ev-flags">' + flags.join("") + pill(e.status) + (e.status === "待发生" ? '<span class="cd">' + rel(e.date) + "</span>" : "") + "</div></div>";
   }
 
   function timeline(avail) {
     var items = [];
-    themes().forEach(function (t) { if (t.date) items.push({ id: t.id, date: t.date, end: null, name: "复查 · " + t.name, color: "var(--c-purple)", shape: "circle" }); });
-    state.data.records.forEach(function (r) { if (r.type === "决策" && r.reviewDate) items.push({ id: r.id, date: r.reviewDate, end: null, name: "决策回看 · " + r.title, color: "var(--t-decision)", shape: "circle" }); });
-    events().forEach(function (e) { if (e.date) items.push({ id: e.id, date: e.date, end: e.dateEnd, name: e.name, color: "var(--c-blue)", shape: "diamond", rem: e.status === "待发生" ? [addDays(e.date, -2), addDays(e.dateEnd || e.date, 1)] : null, noExp: !e.expectation }); });
-    state.data.plans.forEach(function (p) { if (p.kind === "复盘" && p.date) items.push({ id: p.id, date: p.date, end: null, name: p.name, color: "var(--c-gray)", shape: "circle" }); });
+    themes().filter(planMatches).forEach(function (t) { if (t.date) items.push({ id: t.id, date: t.date, end: null, name: "复查 · " + t.name, color: "var(--c-purple)", shape: "circle" }); });
+    filtered().forEach(function (r) { if (r.type === "决策" && r.reviewDate) items.push({ id: r.id, date: r.reviewDate, end: null, name: "决策回看 · " + r.title, color: "var(--t-decision)", shape: "circle" }); });
+    events().filter(planMatches).forEach(function (e) { if (e.date) items.push({ id: e.id, date: e.date, end: e.dateEnd, name: e.name, color: "var(--c-blue)", shape: "diamond", rem: e.status === "待发生" ? [addDays(e.date, -2), addDays(e.dateEnd || e.date, 1)] : null, noExp: !e.expectation }); });
+    state.data.plans.filter(planMatches).forEach(function (p) { if (p.kind === "复盘" && p.date) items.push({ id: p.id, date: p.date, end: null, name: p.name, color: "var(--c-gray)", shape: "circle" }); });
     items.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
-    if (!items.length) return '<p class="empty">还没有带日期的主题或事件。</p>';
+    if (!items.length) return '<p class="empty">没有符合条件的主题或事件。</p>';
 
     var today = todayKey();
     var all = items.reduce(function (acc, i) { acc.push(i.date); if (i.end) acc.push(i.end); if (i.rem) acc.push(i.rem[0], i.rem[1]); return acc; }, [today]);
@@ -697,11 +810,11 @@
         '<h2 class="d-title">' + esc(o.name) + "</h2>" +
         (o.hypothesis ? '<p class="d-quote" style="--tc:var(--c-purple)">' + esc(o.hypothesis) + "</p>" : "") +
         '<dl class="d-fields">' +
-        field(o.kind === "追踪主题" ? "下次复查" : "日期", o.date ? md(o.date) + (o.dateEnd ? " – " + md(o.dateEnd) : "") + "（" + rel(o.date) + "）" : "") +
+        field(o.kind === "追踪主题" ? "下次复查" : "日期", o.date ? md(o.date) + (o.time ? " " + o.time + "（新加坡时间）" : "") + (o.dateEnd ? " – " + md(o.dateEnd) : "") + " · " + rel(o.date) : "") +
         field("证实信号", esc(o.confirm)) + field("推翻信号", esc(o.refute)) +
         (isEv ? field("预期", o.expectation ? esc(o.expectation) : '<span class="flag warn">未写</span>') : "") +
         (isEv ? field("结果", o.result ? esc(o.result) : "—") : "") +
-        (isEv && o.status === "待发生" ? field("提醒", "写预期 " + md(addDays(o.date, -2)) + " 09:00 · 补结果 " + md(addDays(o.dateEnd || o.date, 1)) + " 09:00（新加坡）") : "") +
+        (isEv && o.status === "待发生" && o.date ? field("提醒", "写预期 " + md(addDays(o.date, -2)) + " 09:00 · 补结果 " + md(addDays(o.dateEnd || o.date, 1)) + " 09:00（新加坡）") : "") +
         field("判定", esc(o.verdict)) + field("主题标签", o.tags.length ? tagsHtml(o.tags) : "") + "</dl>" +
         linkGroup("所属主题", o.theme) + linkGroup("检验事件", o.events) + linkGroup("相关记录", o.records) +
         '<div class="d-actions"><a class="btn ghost" href="' + notionUrl(o.id) + '" target="_blank" rel="noopener">在 Notion 中打开 ↗</a></div>';
@@ -724,7 +837,7 @@
   }
 
   function rerender() {
-    renderFilters(); renderFeed(); renderTimeFilter();
+    renderFilters(); renderFeed(); renderTimeFilter(); renderEvents();
     if (state.view === "graph") renderGraph(); else $("n-graph").textContent = graphData().nodes.filter(function (n) { return n.kind !== "tag"; }).length;
   }
 
@@ -738,6 +851,7 @@
     $("f-reset").addEventListener("click", function () { state.f.type.clear(); state.f.status.clear(); state.f.tag.clear(); rerender(); });
     $("q").addEventListener("input", function (e) { state.q = e.target.value; rerender(); });
     $("g-tags").addEventListener("change", renderGraph);
+    $("g-events").addEventListener("change", renderGraph);
     document.addEventListener("click", function (e) {
       var el = e.target.closest("[data-id]");
       if (el && !el.closest(".g-node")) openDetail(el.dataset.id);
@@ -754,17 +868,30 @@
   }
 
   bind();
+  bindLogin();
   bindTimeFilter();
   bindTimelinePan();
   load().then(function (data) {
-    state.data = data; index(data);
-    renderSource(); renderKPIs(); renderFilters(); renderFeed(); renderLegend(); renderEvents(); renderTimeFilter();
-    $("n-graph").textContent = graphData().nodes.filter(function (n) { return n.kind !== "tag"; }).length;
-    setView(location.hash.slice(1));
-  }).catch(function () {
+    try {
+      state.data = data; index(data);
+      renderSource(); renderKPIs(); renderFilters(); renderFeed(); renderLegend(); renderEvents(); renderTimeFilter();
+      $("n-graph").textContent = graphData().nodes.filter(function (n) { return n.kind !== "tag"; }).length;
+      setView(location.hash.slice(1));
+    } catch (err) {
+      // data arrived but something in it broke rendering: say so, rather than blaming the connection
+      console.error(err);
+      $("v-feed").hidden = false;
+      $("v-feed").innerHTML = '<div class="empty conn-err"><p><b>已经读到 Notion 数据，但页面显示时出错了。</b></p>' +
+        "<p>可能是 Notion 里有页面还不支持的数据格式。把下面这行错误信息发给开发者即可定位。</p>" +
+        '<p class="mono">' + esc(err && (err.stack || err.message) || err).split("\n").slice(0, 3).join(" · ") + "</p></div>";
+    }
+  }, function (e) {
+    if (e && e.needLogin) { showLogin(); return; }
+    var b = (apiError && apiError.body) || {};
+    var detail = [apiError && apiError.status ? "HTTP " + apiError.status : "", b.notionCode || "", b.error || ""].filter(Boolean).join(" · ");
     $("src").querySelector("span").textContent = "未连接 Notion";
-    $("v-feed").innerHTML = '<div class="empty"><p><b>还没有连接 Notion。</b></p>' +
-      "<p>在 Vercel 项目的 Environment Variables 中添加 <code>NOTION_TOKEN</code>（Notion Internal Integration 的 secret），" +
-      "并在 Notion 里把「信息与灵感库」「计划与关注」两个数据库连接到这个 integration，然后重新部署。</p></div>";
+    $("v-feed").innerHTML = '<div class="empty conn-err"><p><b>没有连上 Notion。</b></p>' +
+      "<p>" + apiErrorHint(apiError) + "</p>" +
+      (detail ? '<p class="mono">' + esc(detail) + "</p>" : "") + "</div>";
   });
 })();
