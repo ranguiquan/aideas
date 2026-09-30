@@ -383,8 +383,9 @@
         act(d);
       })
       .on("keydown", function (e, d) { if (e.key === "Enter" && d.kind !== "tag") openDetail(d.id); })
-      .on("mouseenter", function (e, d) { highlight(d); showTip(e, d); })
-      .on("mousemove", function (e) { moveTip(e); })
+      // touch emulates these before click; changing the DOM here makes mobile browsers swallow the click
+      .on("mouseenter", function (e, d) { if (lastPointer !== "mouse") return; highlight(d); showTip(e, d); })
+      .on("mousemove", function (e) { if (lastPointer === "mouse") moveTip(e); })
       .on("mouseleave", function () { highlight(null); if (lastPointer === "mouse") hideTip(); })   // touch fires a synthetic mouseleave right after a tap
       .call(d3.drag()
         .on("start", function (e, d) {
