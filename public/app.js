@@ -356,7 +356,7 @@
     if (sim) sim.stop();
     box.innerHTML = "";
     var svg = d3.select(box).append("svg").attr("viewBox", [0, 0, W, H]).attr("role", "img").attr("aria-label", "记录、主题、事件与标签的关系图");
-    var lastPointer = "mouse", tipFor = null;
+    var lastPointer = "mouse", tipFor = null, tipNode = null;
     svg.on("click.tip", function (e) { if (!e.target.closest(".g-node")) hideTip(); });   // tap on empty space closes the card
     svg.append("defs").append("marker").attr("id", "arr").attr("viewBox", "0 0 10 10").attr("refX", 10).attr("refY", 5)
       .attr("markerWidth", 7).attr("markerHeight", 7).attr("orient", "auto")
@@ -371,15 +371,16 @@
       .attr("class", function (d) { return "g-link " + d.kind; })
       .attr("marker-end", function (d) { return d.kind === "derive" ? "url(#arr)" : null; });
 
+    function act(d) { if (d.kind === "tag") toggleTag(d.id.slice(4)); else openDetail(d.id); }
     var node = root.append("g").selectAll("g").data(g.nodes).join("g")
       .attr("class", function (d) { return "g-node " + d.kind + "node"; })
       .attr("tabindex", function (d) { return d.kind === "tag" ? null : 0; })
       .on("pointerdown.kind", function (e) { lastPointer = e.pointerType; })
       .on("click", function (e, d) {
-        // touch: first tap shows the full-title card, a second tap on the same node acts
-        if (lastPointer !== "mouse" && tipFor !== d.id) { showTip(e, d, true); tipFor = d.id; return; }
+        // touch: a tap only shows the full-title card; tapping the card acts (see tip click below)
+        if (lastPointer !== "mouse") { showTip(e, d, true); tipFor = d.id; tipNode = d; return; }
         hideTip();
-        if (d.kind === "tag") toggleTag(d.id.slice(4)); else openDetail(d.id);
+        act(d);
       })
       .on("keydown", function (e, d) { if (e.key === "Enter" && d.kind !== "tag") openDetail(d.id); })
       .on("mouseenter", function (e, d) { highlight(d); showTip(e, d); })
@@ -493,18 +494,19 @@
     }
 
     // hover card with the full title
-    var tip = d3.select(box).append("div").attr("class", "g-tip").attr("hidden", true);
+    var tip = d3.select(box).append("div").attr("class", "g-tip").attr("hidden", true)
+      .on("click", function () { var d = tipNode; if (!d || !tip.classed("tappable")) return; hideTip(); act(d); });
     function showTip(e, d, tapped) {
       var o = d.ref || {}, meta = d.kind === "tag" ? "标签" : o._kind === "record" ? [o.type, o.status].filter(Boolean).join(" · ") : [o.kind, o.status, o.date ? md(o.date) : ""].filter(Boolean).join(" · ");
       tip.html("<b>" + esc(d.kind === "tag" ? d.label : d.label) + "</b>" + (meta ? "<span>" + esc(meta) + "</span>" : "") +
-        (tapped ? "<em>" + (d.kind === "tag" ? "再点一次按此标签筛选" : "再点一次查看详情") + "</em>" : "")).attr("hidden", null);
+        (tapped ? "<em>" + (d.kind === "tag" ? "点这里按此标签筛选 ›" : "点这里查看详情 ›") + "</em>" : "")).classed("tappable", !!tapped).attr("hidden", null);
       moveTip(e);
     }
     function moveTip(e) {
       var p = d3.pointer(e, box), bw = box.clientWidth, tw = tip.node().offsetWidth;
       tip.style("left", Math.min(p[0] + 14, bw - tw - 8) + "px").style("top", (p[1] + 16) + "px");
     }
-    function hideTip() { tip.attr("hidden", true); tipFor = null; }
+    function hideTip() { tip.attr("hidden", true).classed("tappable", false); tipFor = null; tipNode = null; }
 
     // ----- focus mode: radial layout by hop distance from one node -----
     var nbrs = {};

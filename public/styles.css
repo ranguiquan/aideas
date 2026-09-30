@@ -198,6 +198,7 @@ button{font:inherit;color:inherit}
 .g-link.plan{stroke:var(--c-orange);stroke-dasharray:4 3;stroke-width:1.4}
 .g-link.theme{stroke:var(--c-purple);stroke-width:1.4}
 .g-link.tag{stroke:var(--line);stroke-width:1}
+#graph{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .g-node{cursor:pointer}
 .g-node text{font:500 11.5px/1 var(--sans);fill:var(--ink-2);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round;pointer-events:none}
 .g-node.tagnode text{font:500 11px/1 var(--mono);fill:var(--muted)}
@@ -348,6 +349,7 @@ button{font:inherit;color:inherit}
 /* graph labels & hover card */
 .g-node.nolabel text.lbl{display:none}
 .g-tip{position:absolute;z-index:2;pointer-events:none;max-width:280px;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:8px 10px;display:grid;gap:3px;font-size:13px;line-height:1.45}
+.g-tip.tappable{pointer-events:auto;cursor:pointer;padding:10px 12px}
 .g-tip b{font-weight:600;color:var(--ink)}
 .g-tip span{font-size:11.5px;color:var(--muted)}
 .g-link,.g-rings circle{vector-effect:non-scaling-stroke}
